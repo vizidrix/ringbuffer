@@ -5,22 +5,7 @@
 #include "ringbuffer.h"
 #include "util.h"
 
-//struct rb_barrier {
-//	uint64_t		seq_num;		/** < Index of the last entry released for consumption */
-//};
-
-struct rb_buffer {
-	rb_buffer_info *	info;			/** < Holds buffer settings */
-
-	uint64_t			size_mask;		/** < Buffer size - 1; Used to maintain scope of buffer */
-
-	uint64_t			seq_num;		/** < Index of the last entry released for consumption */
-	
-	void *				data_buffer;
-
-	uint64_t			write_slot;		/** < Index of the next available production slot */
-	uint64_t			write_barrier;  /** < Index of the last entry released for production */
-};
+//#include <xmmintrin.h>
 
 inline uint64_t rb_get_buffer_size_from_type(uint8_t buffer_type) {
 	static const uint64_t buffer_sizes[14] =
@@ -43,42 +28,91 @@ inline uint64_t rb_get_buffer_size_from_type(uint8_t buffer_type) {
 	return buffer_sizes[buffer_type];
 }
 
+//struct rb_barrier {
+//	uint64_t		seq_num;		/** < Index of the last entry released for consumption */
+//};
 
-int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t writer_mode, uint8_t buffer_type, uint8_t chunk_count) {
+struct rb_batch {
+	rb_buffer_info *	info;			/** < Holds buffer settings */
+	uint8_t				size;			/** < The number of slots owned by this batch */
+	uint8_t				pub_mask;		/** < By default this is all on (max value).  Flipping a bit off will cause the ring buffer to skip that slot */
+
+	void *				data_buffer;	/** < Pointer to the slot(s) owned by this batch in the buffer */
+};
+
+struct rb_buffer {
+	rb_buffer_info *	info;			/** < Holds buffer settings */
+
+	uint64_t			size_mask;		/** < Buffer size - 1; Used to maintain scope of buffer */
+	uint64_t			seq_num;		/** < Index of the last entry released for consumption */
+	
+	void *				data_buffer;
+
+	uint64_t			write_slot;		/** < Index of the next available production slot */
+	uint64_t			write_barrier;  /** < Index of the last entry released for production */
+};
+
+void rb_print_info(rb_buffer_info* info) {
+	DebugPrint("Buffer Type: %d", info->buffer_type);
+	DebugPrint("Buffer Size: %d", info->buffer_size);
+	DebugPrint("Chunk Count: %d", info->chunk_count);
+	DebugPrint("Data Size: %d", info->data_size);
+}
+
+int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_type, uint8_t chunk_count) {
 	// Allocate space to hold the buffer and info structs
 	*buffer_ptr = malloc(sizeof(rb_buffer));
 	(*buffer_ptr)->info = malloc(sizeof(rb_buffer_info));
 	uint64_t buffer_size = rb_get_buffer_size_from_type(buffer_type);
 	// Populate the info struct
-	(*buffer_ptr)->info->writer_mode = writer_mode;
 	(*buffer_ptr)->info->buffer_type = buffer_type;
 	(*buffer_ptr)->info->buffer_size = buffer_size;
 	(*buffer_ptr)->info->chunk_count = chunk_count;
 	(*buffer_ptr)->info->data_size = chunk_count << 5; // * 32
+	//rb_print_info((*buffer_ptr)->info);
 	// Populate the buffer struct
 	(*buffer_ptr)->size_mask = buffer_size - 1;
 	(*buffer_ptr)->seq_num = 0;
 	
 	// Allocate giant contiguous byte array to hold the entries
-	DebugPrint("Allocating data_buffer: %d * (%d * 32) = %d", buffer_size, chunk_count, buffer_size * (chunk_count << 5));
+	//DebugPrint("Allocating data_buffer: %d * (%d * 32) = %d", buffer_size, chunk_count, buffer_size * (chunk_count << 5));
 	(*buffer_ptr)->data_buffer = malloc(buffer_size * (chunk_count << 5));
 
 	return 0;
 }
 
 int rb_release_buffer(rb_buffer * buffer) {
-	DebugPrint("Released Buffer: %d", buffer->seq_num);
+	//DebugPrint("Released Buffer: %d", buffer->seq_num);
 	free(buffer->info);
 	free(buffer);
 }
 
-int rb_claim(void * batch, char count) {
+rb_buffer_info * rb_get_info(rb_buffer * buffer) {
+	return buffer->info;
+}
+
+//struct rb_batch {
+//	rb_buffer_info *	info;			/** < Holds buffer settings */
+//	uint8_t				size;			/** < The number of slots owned by this batch */
+//	uint8_t				pub_mask;		/** < By default this is all on (max value).  Flipping a bit off will cause the ring buffer to skip that slot */
+//
+//	void *				data_buffer;	/** < Pointer to the slot(s) owned by this batch in the buffer */
+//};
+
+rb_batch * rb_claim(rb_buffer * buffer, uint8_t count) {
+	// TODO: Pool batch alloc's
+
+	/*
+	DebugPrint("Before: %d", buffer->seq_num);
+	__sync_fetch_and_add(&buffer->seq_num, 10);
+	DebugPrint("After: %d", buffer->seq_num);
+	*/
 	// Try update write slot (atomic)
 	// Return the batch - address, count, etc struct
 	return 0;
 }
 
-int rb_publish(uint64_t position, char count) {
+int rb_publish(rb_batch * batch) {
 
 	return 0;
 }

@@ -23,13 +23,7 @@ typedef enum { 					//   Multiplier    | Entries
 	L12		= 0x0800,			//  64 * 64 * 4096 = 16,777,216 -- 4 Level Trie ^
 } rb_buffer_size_t;
 
-typedef enum {
-	SINGLE_WRITER		 	= 0x01,	// With only one writer thread we can just increment tracking vars on publish
-	MULTI_WRITER			= 0x02,	// To accomodate multiple writers we have to track out of order claims, publishes and batching
-} rb_writer_mode_t;
-
 typedef struct rb_buffer_info {
-	uint8_t			writer_mode;	/** < Single writer, multi-writer */
 	uint8_t			buffer_type;	/** < Determines number of slots as specified in rb_buffer_size_t enum */
 	uint64_t		buffer_size;	/** < Actual number of slots allocated per the rules above */
 	uint8_t			chunk_count;	/** < Number of 32 byte chunks allocated for each buffer slot (must be an even number on systems with 64 byte L1 cache) */
@@ -38,6 +32,8 @@ typedef struct rb_buffer_info {
 
 //typedef struct rb_barrier rb_barrier;
 
+typedef struct rb_batch rb_batch;
+
 typedef struct rb_buffer rb_buffer;
 
 /*
@@ -45,10 +41,11 @@ This ring buffer conforms to certain size constraints due to tracking mechanisms
 buffer_size:	Ensures that ring size fits in 3-4 depth Trie
 data_size: 		Number of 64 byte blocks to allocate per entry
 */
-extern int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t writer_mode, uint8_t buffer_size, uint8_t data_size);
+extern int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_size, uint8_t data_size);
 extern int rb_release_buffer(rb_buffer * buffer);
-extern int rb_claim(void * batch, char count);
-extern int rb_publish(uint64_t position, char count);
+extern rb_buffer_info * rb_get_info(rb_buffer * buffer);
+extern rb_batch * rb_claim(rb_buffer * buffer, uint8_t count);
+extern int rb_publish(rb_batch * batch);
 
 #ifdef __extern_golang
 /* Hack to get referencing package to build */

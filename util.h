@@ -9,6 +9,8 @@
  *
  ****************************************************************************/
 
+#define BARRIER() { asm volatile("" ::: "memory"); } // Compiler barrier
+ 
 char debug_out[1000];
 void vDebugPrint(const char* format, va_list args) {
 	vsprintf(debug_out, format, args);

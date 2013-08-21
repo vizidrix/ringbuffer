@@ -22,11 +22,21 @@ type Given_a_single_writer_buffer struct {
 var _ = Suite(&Given_a_single_writer_buffer{})
 
 func (g *Given_a_single_writer_buffer) SetUpTest(c *C) {
-	g.buffer, _ = NewRingBuffer(SINGLE_WRITER, L0, 4)
+	g.buffer, _ = NewRingBuffer(L0, 2)
 }
 
 func (g *Given_a_single_writer_buffer) TearDownTest(c *C) {
 	g.buffer.Close()
+}
+
+func (g *Given_a_single_writer_buffer) Test_Should_populate_RingBufferInfo(c *C) {
+	info := g.buffer.GetInfo()
+
+	log.Printf("Info: %s", info)
+	c.Assert(info.GetBufferType(), Equals, L0)
+	c.Assert(info.GetBufferSize(), Equals, uint64(64))
+	c.Assert(info.GetChunkCount(), Equals, uint8(2))
+	c.Assert(info.GetDataSize(), Equals, uint64(64))
 }
 
 func (g *Given_a_single_writer_buffer) Test_When_a_batch_is_claimed(c *C) {
@@ -36,6 +46,7 @@ func (g *Given_a_single_writer_buffer) Test_When_a_batch_is_claimed(c *C) {
 	c.Assert(batch.Size, Equals, 1)
 }
 
+/*
 func (g *Given_a_single_writer_buffer) Test_When_a_single_entry_is_published(c *C) {
 	data := make([]byte, 10)
 	token, _ := g.buffer.Publish(data)
@@ -119,18 +130,21 @@ func (g *Given_a_single_writer_buffer) Test_Should_init_ring_buffer(c *C) {
 
 	//c.Fail()
 }
+*/
 
 // 0.28 ns/op empty
 // 32 ns/op with noop just method calls
 func Benchmark_Logic(b *testing.B) {
-	data := make([]byte, 10)
-	var batch *Batch
-	buffer, _ := NewRingBuffer(SINGLE_WRITER, 16, 10)
-	defer buffer.Close()
+	//data := make([]byte, 10)
+	//var batch *Batch
+	//buffer, _ := NewRingBuffer(SINGLE_WRITER, 16, 10)
+	//defer buffer.Close()
 	for i := 0; i < b.N; i++ {
-		batch, _ = buffer.Claim(1)
-		batch.Entries[0].CopyFrom(data)
-		batch.Publish()
+		buffer, _ := NewRingBuffer(16, 10)
+		buffer.Close()
+		//batch, _ = buffer.Claim(1)
+		//batch.Entries[0].CopyFrom(data)
+		//batch.Publish()
 	}
 }
 
@@ -145,5 +159,5 @@ func Benchmark_Logic(b *testing.B) {
 
 func ring_buffer_test_ignore() {
 	log.Println(fmt.Sprintf("", 10))
-	log.Printf("", reflect.SliceHeader{}, errors.New("stuff"), strings.HasPrefix("s", "q"), unsafe.Pointer(nil))
+	log.Printf("", reflect.SliceHeader{}, errors.New("stuff"), strings.HasPrefix("s", "q"), unsafe.Pointer(nil), time.Millisecond)
 }
