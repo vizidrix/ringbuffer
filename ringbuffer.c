@@ -1,3 +1,107 @@
+#include <stdlib.h>
+#include <stdint.h>
+#include <assert.h>
+
+#include "ringbuffer.h"
+#include "util.h"
+
+//struct rb_barrier {
+//	uint64_t		seq_num;		/** < Index of the last entry released for consumption */
+//};
+
+struct rb_buffer {
+	rb_buffer_info *	info;			/** < Holds buffer settings */
+
+	uint64_t			size_mask;		/** < Buffer size - 1; Used to maintain scope of buffer */
+
+	uint64_t			seq_num;		/** < Index of the last entry released for consumption */
+	
+	void *				data_buffer;
+
+	uint64_t			write_slot;		/** < Index of the next available production slot */
+	uint64_t			write_barrier;  /** < Index of the last entry released for production */
+};
+
+inline uint64_t rb_get_buffer_size_from_type(uint8_t buffer_type) {
+	static const uint64_t buffer_sizes[14] =
+	{
+		0x00000000,
+		0x00000040, //             64	=	      64
+		0x00000200, //         8 * 64	=        512
+		0x00000400, //        16 * 64	=      1,024
+		0x00000800, //        32 * 64	=      2,048
+		0x00001000, //        64 * 64 	=      4,096
+		0x00008000, //       8 * 4096 	=     32,768
+		0x00010000, //      16 * 4096 	=     65,536
+		0x00020000, //      32 * 4096 	=    131,072
+		0x00040000, // 	    64 * 4096 	=    262,144
+		0x00200000, //  8 * 64 * 4096 	=  2,097,152
+		0x00400000, // 16 * 64 * 4096 	=  4,194,304
+		0x00800000, // 32 * 64 * 4096 	=  8,388,608
+		0x01000000, // 64 * 64 * 4096 	= 16,777,216
+	};
+	return buffer_sizes[buffer_type];
+}
+
+
+int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t writer_mode, uint8_t buffer_type, uint8_t chunk_count) {
+	// Allocate space to hold the buffer and info structs
+	*buffer_ptr = malloc(sizeof(rb_buffer));
+	(*buffer_ptr)->info = malloc(sizeof(rb_buffer_info));
+	uint64_t buffer_size = rb_get_buffer_size_from_type(buffer_type);
+	// Populate the info struct
+	(*buffer_ptr)->info->writer_mode = writer_mode;
+	(*buffer_ptr)->info->buffer_type = buffer_type;
+	(*buffer_ptr)->info->buffer_size = buffer_size;
+	(*buffer_ptr)->info->chunk_count = chunk_count;
+	(*buffer_ptr)->info->data_size = chunk_count << 5; // * 32
+	// Populate the buffer struct
+	(*buffer_ptr)->size_mask = buffer_size - 1;
+	(*buffer_ptr)->seq_num = 0;
+	
+	// Allocate giant contiguous byte array to hold the entries
+	DebugPrint("Allocating data_buffer: %d * (%d * 32) = %d", buffer_size, chunk_count, buffer_size * (chunk_count << 5));
+	(*buffer_ptr)->data_buffer = malloc(buffer_size * (chunk_count << 5));
+
+	return 0;
+}
+
+int rb_release_buffer(rb_buffer * buffer) {
+	DebugPrint("Released Buffer: %d", buffer->seq_num);
+	free(buffer->info);
+	free(buffer);
+}
+
+int rb_claim(void * batch, char count) {
+	// Try update write slot (atomic)
+	// Return the batch - address, count, etc struct
+	return 0;
+}
+
+int rb_publish(uint64_t position, char count) {
+
+	return 0;
+}
+
+int rb_update_seq_num(rb_buffer * buffer, uint64_t value) {
+	// Set seq num
+	// Notify readers if applicable
+}
+
+int rb_update_write_barrier(rb_buffer * buffer, uint64_t value) {
+	// Set write barrier
+	// Notify writers if applicable
+}
+
+int rb_try_update_write_slot(rb_buffer * buffer, uint64_t value) {
+	// Needs to be done atomically
+	// Checks for room between slot and barrier
+	// If no room is found do we (a) block or (b) return fail? Flag?
+}
+
+
+
+
 //#include <stdarg.h> /* Needed for the definition of va_list */
 //#include <stdlib.h>
 //#include <stdint.h>
@@ -18,39 +122,40 @@
 //#include <sys/socket.h>
 //#include <xmmintrin.h>
 
-#include <stdlib.h>
-#include <stdint.h>
-#include <assert.h>
 
-#include "ringbuffer.h"
-#include "util.h"
 
-struct rb_barrier {
-	uint64_t		seq_num;		/** < Index of the last entry released */
+//#include <liburcu.h>
+//#include <trace/events/rcu.h>
+
+
+// RCU on the writer lock structure
+// Claim and Publish are write operations (mutate the lock structure)
+// Evety publish which completes a contiguous region is a Quesiant State
+// Writers have a CAS block to compete for batches
+// Each batch has a counter
+// On publish find the first slot with batch id < target
+
+/*
+void synchronize_kernel(void);
+
+void call_rcu(struct rcu_head *head,
+              void (*func)(void *arg),
+              void *arg);
+
+struct rcu_head {
+        struct list_head list;
+        void (*func)(void *obj);
+        void *arg;
 };
 
-struct rb_buffer {
-	//rb_barrier *	insert_barrier;
-	uint64_t		seq_num;
-	uint64_t		size_mask;		/** < Buffer size - 1; Used to maintain scope of buffer */
-	void *			data_buffer;
-};
+void rcu_read_lock(void);
 
-int rb_init_buffer(rb_buffer** buffer_ptr, uint64_t buffer_size, uint32_t data_size) {
-	*buffer_ptr = malloc(sizeof(rb_buffer));
-	(*buffer_ptr)->seq_num = 10;
-	return 0;
-}
+void rcu_read_unlock(void);
 
-int rb_release_buffer(rb_buffer * buffer) {
-	DebugPrint("Released Buffer: %d", buffer->seq_num);
-	free(buffer);
-}
+https://kernel.googlesource.com/pub/scm/linux/kernel/git/rostedt/linux-trace/+/ftrace/rcu-2/kernel/rcutree.c
 
-int rb_claim(uint64_t position, char count) {
-	return 0;
-}
+#424 - rcu_idle_enter
 
-int rb_publish(uint64_t position, char count) {
-	return 0;
-}
+
+*/
+
