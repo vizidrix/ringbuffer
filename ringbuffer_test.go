@@ -70,12 +70,11 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_block_if_buffer_is_too_full(
 
 	finished := make(chan struct{})
 	go func() {
-		//g.buffer.Claim(2)
-		<-finished
+		g.buffer.Claim(2)
 		close(finished)
 	}()
 	select {
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(1 * time.Millisecond):
 		{
 		}
 	case <-finished:

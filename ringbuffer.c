@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
+#include <time.h>
 
 #include "ringbuffer.h"
 #include "util.h"
@@ -46,14 +47,16 @@ struct rb_buffer {
 	rb_buffer_info *	info;			/** < Holds buffer settings */
 
 	uint64_t			size_mask;		/** < Buffer size - 1; Used to maintain scope of buffer */
-	uint64_t			read_seq_num;	/** < Index of the last entry released for consumption */
-	uint64_t			write_seq_num;	/** < Index of the last entry released for production */
-	uint64_t			batch_num;		/** < Index of the last batch allocated to a producer */
+	volatile uint64_t	read_seq_num;	/** < Index of the latest entry released for consumption */
+	volatile uint64_t	read_barrier;	/** < Index of the oldest entry released for consumption but still in use by at least one reader */
+	volatile uint64_t	write_seq_num;	/** < Index of the latest entry released for production */
+	volatile uint64_t	write_barrier;	/** < Index of the oldest entry released for production but still in use by a writer */
+	volatile uint64_t	batch_num;		/** < Index of the last batch allocated to a producer */
 
 	void *				data_buffer;
 
-	uint64_t			write_slot;		/** < Index of the next available production slot */
-	uint64_t			write_barrier;  /** < Index of the last entry released for production */
+	//uint64_t			write_slot;		/** < Index of the next available production slot */
+	//uint64_t			write_barrier;  /** < Index of the last entry released for production */
 };
 
 void rb_print_info(rb_buffer_info* info) {
@@ -111,16 +114,33 @@ rb_claim and rb_publish are NOT thread safe and must somehow be
 fanned in for scenarios other than single producer
 
 */
+unsigned long const MILLISECOND = 1000000L;
+unsigned long const MICROSECOND = 1000L;
 
 //rb_batch * rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count) {
 int rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count) {
 	// TODO: Pool batch alloc's?
 	if(count > buffer->info->buffer_size) {
 		perror("Requested batch size exceeds buffer size");
-		//errno(1);
 		return 1;
 	}
-	//rb_batch * batch = malloc(sizeof(rb_batch));
+	uint64_t target_seq_num = buffer->write_seq_num + count;
+	uint64_t target_position = target_seq_num & buffer->size_mask;
+	uint64_t current_barrier = buffer->read_barrier + buffer->size_mask;
+	uint64_t current_position = buffer->read_barrier & buffer->size_mask;
+	DebugPrint("T Seq: %d > %d && T Pos: %d > %d ?", target_seq_num, current_barrier, target_position, current_position);
+	uint16_t backoff = 0;
+	while(target_seq_num > current_barrier && target_position > current_position) {
+		
+		if((backoff & 0xFF) == 0x00) {
+			if((backoff / 0xFF) > 0xFF) {
+				DebugPrint("Backoff: %d", ((backoff / 0xFF)+1));
+				backoff = 0;
+			}
+			nanosleep((struct timespec[]){{0, MICROSECOND * ((backoff / 0xFF)+1)}}, NULL);
+		}
+		backoff++;
+	}
 	*batch = malloc(sizeof(rb_batch));
 	(*batch)->info = buffer->info;
 	(*batch)->batch_num = buffer->batch_num;
