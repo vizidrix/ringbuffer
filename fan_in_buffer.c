@@ -22,9 +22,11 @@
 	and that all the efforts to fit data into cache lines and contiguous blocks
 	are actually utilized during reader forward scanning...  both are important
 
-	
+
 
 // Likely shape of request struct
+// Useful to make sure batch request is cachline padded?
+// Is the number of procs a good size boundary for the fan-in buffer?
 typedef struct rb_batch_request {
 	rb_batch * 		batch;
 	uint8_t 		count;
@@ -35,6 +37,11 @@ typedef struct rb_batch_request {
 // Article that describes the structure used to do non-blocking queue using CAS
 // http://www.drdobbs.com/parallel/practical-lock-free-buffers/219500200
 
+// Interesting lock info:
+// http://web.mit.edu/6.173/www/currentsemester/readings/R06-scalable-synchronization-1991.pdf
+
+// Another lock-free ring buffer article:
+// http://www.cse.cuhk.edu.hk/~pclee/www/pubs/ancs09poster.pdf
 /*
 BARRIER();
 	

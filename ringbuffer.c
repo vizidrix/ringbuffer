@@ -34,6 +34,8 @@ inline uint64_t rb_get_buffer_size_from_type(uint8_t buffer_type) {
 
 struct rb_batch {
 	rb_buffer_info *	info;			/** < Holds buffer settings */
+	uint64_t			batch_num;		/** < Sequential counter of batches to date */
+	uint64_t			seq_num;		/** < Sequence number of the first entry in the batch */
 	uint8_t				size;			/** < The number of slots owned by this batch */
 	uint8_t				pub_mask;		/** < By default this is all on (max value).  Flipping a bit off will cause the ring buffer to skip that slot */
 
@@ -44,8 +46,10 @@ struct rb_buffer {
 	rb_buffer_info *	info;			/** < Holds buffer settings */
 
 	uint64_t			size_mask;		/** < Buffer size - 1; Used to maintain scope of buffer */
-	uint64_t			seq_num;		/** < Index of the last entry released for consumption */
-	
+	uint64_t			read_seq_num;	/** < Index of the last entry released for consumption */
+	uint64_t			write_seq_num;	/** < Index of the last entry released for production */
+	uint64_t			batch_num;		/** < Index of the last batch allocated to a producer */
+
 	void *				data_buffer;
 
 	uint64_t			write_slot;		/** < Index of the next available production slot */
@@ -72,7 +76,9 @@ int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_type, uint8_t chunk_co
 	//rb_print_info((*buffer_ptr)->info);
 	// Populate the buffer struct
 	(*buffer_ptr)->size_mask = buffer_size - 1;
-	(*buffer_ptr)->seq_num = 0;
+	(*buffer_ptr)->read_seq_num = 0;
+	(*buffer_ptr)->write_seq_num = 0;
+	(*buffer_ptr)->batch_num = 1;
 	
 	// Allocate giant contiguous byte array to hold the entries
 	//DebugPrint("Allocating data_buffer: %d * (%d * 32) = %d", buffer_size, chunk_count, buffer_size * (chunk_count << 5));
@@ -99,20 +105,44 @@ rb_buffer_info * rb_get_info(rb_buffer * buffer) {
 //	void *				data_buffer;	/** < Pointer to the slot(s) owned by this batch in the buffer */
 //};
 
-rb_batch * rb_claim(rb_buffer * buffer, uint8_t count) {
-	// TODO: Pool batch alloc's
+/*  ! ! ! ! !
 
-	/*
-	DebugPrint("Before: %d", buffer->seq_num);
-	__sync_fetch_and_add(&buffer->seq_num, 10);
-	DebugPrint("After: %d", buffer->seq_num);
-	*/
-	// Try update write slot (atomic)
-	// Return the batch - address, count, etc struct
+rb_claim and rb_publish are NOT thread safe and must somehow be
+fanned in for scenarios other than single producer
+
+*/
+
+//rb_batch * rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count) {
+int rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count) {
+	// TODO: Pool batch alloc's?
+	if(count > buffer->info->buffer_size) {
+		perror("Requested batch size exceeds buffer size");
+		//errno(1);
+		return 1;
+	}
+	//rb_batch * batch = malloc(sizeof(rb_batch));
+	*batch = malloc(sizeof(rb_batch));
+	(*batch)->info = buffer->info;
+	(*batch)->batch_num = buffer->batch_num;
+	(*batch)->seq_num = buffer->write_seq_num;
+	(*batch)->size = count;
+	(*batch)->pub_mask = 0xFF;
+	(*batch)->data_buffer = (&buffer->data_buffer)[buffer->write_seq_num];
+
+	buffer->batch_num++;
+	buffer->write_seq_num += count;
+
+	return 0;
+}
+
+int rb_cancel(rb_batch * batch) {
+	free(batch);
+
 	return 0;
 }
 
 int rb_publish(rb_batch * batch) {
+	free(batch);
 
 	return 0;
 }

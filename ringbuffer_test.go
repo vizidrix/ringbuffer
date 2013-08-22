@@ -15,21 +15,21 @@ import (
 
 func Test(t *testing.T) { TestingT(t) }
 
-type Given_a_single_writer_buffer struct {
+type Given_a_size_64_writer_buffer struct {
 	buffer *RingBuffer
 }
 
-var _ = Suite(&Given_a_single_writer_buffer{})
+var _ = Suite(&Given_a_size_64_writer_buffer{})
 
-func (g *Given_a_single_writer_buffer) SetUpTest(c *C) {
+func (g *Given_a_size_64_writer_buffer) SetUpTest(c *C) {
 	g.buffer, _ = NewRingBuffer(L0, 2)
 }
 
-func (g *Given_a_single_writer_buffer) TearDownTest(c *C) {
+func (g *Given_a_size_64_writer_buffer) TearDownTest(c *C) {
 	g.buffer.Close()
 }
 
-func (g *Given_a_single_writer_buffer) Test_Should_populate_RingBufferInfo(c *C) {
+func (g *Given_a_size_64_writer_buffer) Test_Should_populate_RingBufferInfo(c *C) {
 	info := g.buffer.GetInfo()
 
 	log.Printf("Info: %s", info)
@@ -39,11 +39,50 @@ func (g *Given_a_single_writer_buffer) Test_Should_populate_RingBufferInfo(c *C)
 	c.Assert(info.GetDataSize(), Equals, uint64(64))
 }
 
-func (g *Given_a_single_writer_buffer) Test_When_a_batch_is_claimed(c *C) {
-	batch, _ := g.buffer.Claim(1)
+func (g *Given_a_size_64_writer_buffer) Test_Should_match_position_and_info_when_a_batch_is_claimed(c *C) {
+	batch1, _ := g.buffer.Claim(1)
+	batch2, _ := g.buffer.Claim(2)
+	batch3, _ := g.buffer.Claim(3)
 
-	c.Assert(batch.Number, Equals, 1)
-	c.Assert(batch.Size, Equals, 1)
+	c.Assert(batch1.BatchNum, Equals, uint64(1))
+	c.Assert(batch2.BatchNum, Equals, uint64(2))
+	c.Assert(batch3.BatchNum, Equals, uint64(3))
+
+	c.Assert(batch1.SeqNum, Equals, uint64(0))
+	c.Assert(batch2.SeqNum, Equals, uint64(1))
+	c.Assert(batch3.SeqNum, Equals, uint64(3))
+
+	c.Assert(batch1.Size, Equals, uint8(1))
+	c.Assert(batch2.Size, Equals, uint8(2))
+	c.Assert(batch3.Size, Equals, uint8(3))
+}
+
+func (g *Given_a_size_64_writer_buffer) Test_Should_not_allow_allocation_beyond_max_size(c *C) {
+	_, err := g.buffer.Claim(255)
+
+	if err == nil {
+		c.Fatalf("Should have raised an error")
+	}
+}
+
+func (g *Given_a_size_64_writer_buffer) Test_Should_block_if_buffer_is_too_full(c *C) {
+	g.buffer.Claim(63) // Claim nearly all the slots
+
+	finished := make(chan struct{})
+	go func() {
+		//g.buffer.Claim(2)
+		<-finished
+		close(finished)
+	}()
+	select {
+	case <-time.After(100 * time.Millisecond):
+		{
+		}
+	case <-finished:
+		{
+			c.Fatalf("Should have blocked waiting for slots")
+		}
+	}
 }
 
 /*

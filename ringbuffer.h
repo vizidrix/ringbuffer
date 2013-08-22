@@ -44,7 +44,9 @@ data_size: 		Number of 64 byte blocks to allocate per entry
 extern int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_size, uint8_t data_size);
 extern int rb_release_buffer(rb_buffer * buffer);
 extern rb_buffer_info * rb_get_info(rb_buffer * buffer);
-extern rb_batch * rb_claim(rb_buffer * buffer, uint8_t count);
+//extern rb_batch * rb_claim(rb_buffer * buffer, uint8_t count);
+extern int rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count);
+extern int rb_cancel(rb_batch * batch);
 extern int rb_publish(rb_batch * batch);
 
 #ifdef __extern_golang

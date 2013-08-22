@@ -36,12 +36,6 @@ type RingBuffer struct {
 	buffer_ptr *[0]byte
 }
 
-type Batch struct {
-	Number  uint64
-	Size    byte
-	Entries []Entry
-}
-
 type PublishToken struct {
 	Published chan struct{}
 	Failed    chan struct{}
@@ -70,8 +64,8 @@ func (buffer *RingBuffer) Close() error {
 }
 
 func (buffer *RingBuffer) GetInfo() *RingBufferInfo {
-	info := C.rb_get_info(buffer.buffer_ptr)
-	return (*RingBufferInfo)(unsafe.Pointer(info))
+	info_ptr := C.rb_get_info(buffer.buffer_ptr)
+	return (*RingBufferInfo)(unsafe.Pointer(info_ptr))
 }
 
 func (buffer *RingBuffer) Publish(data []byte) (*PublishToken, error) {
@@ -88,25 +82,22 @@ func (buffer *RingBuffer) Publish(data []byte) (*PublishToken, error) {
 }
 
 func (buffer *RingBuffer) Claim(count uint8) (*Batch, error) {
-	batch := C.rb_claim(buffer.buffer_ptr, C.uint8_t(count))
+	var batch_ptr *C.rb_batch
+	result := C.rb_claim(buffer.buffer_ptr, &batch_ptr, C.uint8_t(count))
+	if result != 0 {
+		return nil, errors.New(fmt.Sprintf("Err: %d", result))
+	}
+	batch := (*Batch)(unsafe.Pointer(batch_ptr))
 
 	log.Printf("Batch: %s", batch)
+
+	return batch, nil
 	//batch := make([]Entry, count)
 	//DebugPrint("Producer claimed: %d", count)
 
-	return &Batch{
-		Entries: make([]Entry, count),
-	}, nil
-}
-
-func (batch *Batch) Publish() (*PublishToken, error) {
-	//DebugPrint("Published: %d", len(batch))
-	// Listen for success event in goroutine
-
-	return &PublishToken{
-		Published: make(chan struct{}),
-		Failed:    make(chan struct{}),
-	}, nil
+	//return &Batch{
+	//	Entries: make([]Entry, count),
+	//}, nil
 }
 
 func (entry *Entry) CopyFrom(data []byte) error {

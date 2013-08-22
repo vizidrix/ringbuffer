@@ -1,5 +1,9 @@
 package ringbuffer
 
+import (
+	"fmt"
+)
+
 type RingBufferInfo struct {
 	buffer_type uint8
 	buffer_size uint64
@@ -21,4 +25,8 @@ func (info *RingBufferInfo) GetChunkCount() uint8 {
 
 func (info *RingBufferInfo) GetDataSize() uint64 {
 	return info.data_size
+}
+
+func (info *RingBufferInfo) String() string {
+	return fmt.Sprintf("[%d_%dslots_%dx32-%db]", info.buffer_type, info.buffer_size, info.chunk_count, info.data_size)
 }
