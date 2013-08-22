@@ -15,11 +15,25 @@ import (
 
 func Test(t *testing.T) { TestingT(t) }
 
+type Given_nothing struct{}
+
 type Given_a_size_64_writer_buffer struct {
 	buffer *RingBuffer
 }
 
+var _ = Suite(&Given_nothing{})
 var _ = Suite(&Given_a_size_64_writer_buffer{})
+
+func (g *Given_nothing) Test_Should_be_able_to_create_a_ring_buffer(c *C) {
+	buffer, _ := NewRingBuffer(L6, 2)
+	info := buffer.GetInfo()
+	//log.Fatalf("Info: %s", info)
+	c.Assert(info.GetBufferType(), Equals, L6)
+	c.Assert(info.GetBufferSize(), Equals, uint64(65536))
+	c.Assert(info.GetChunkCount(), Equals, uint8(2))
+	c.Assert(info.GetDataSize(), Equals, uint64(64))
+	buffer.Close()
+}
 
 func (g *Given_a_size_64_writer_buffer) SetUpTest(c *C) {
 	g.buffer, _ = NewRingBuffer(L0, 2)
@@ -32,7 +46,7 @@ func (g *Given_a_size_64_writer_buffer) TearDownTest(c *C) {
 func (g *Given_a_size_64_writer_buffer) Test_Should_populate_RingBufferInfo(c *C) {
 	info := g.buffer.GetInfo()
 
-	log.Printf("Info: %s", info)
+	//log.Printf("Info: %s", info)
 	c.Assert(info.GetBufferType(), Equals, L0)
 	c.Assert(info.GetBufferSize(), Equals, uint64(64))
 	c.Assert(info.GetChunkCount(), Equals, uint8(2))
@@ -178,12 +192,26 @@ func Benchmark_Logic(b *testing.B) {
 	//buffer, _ := NewRingBuffer(SINGLE_WRITER, 16, 10)
 	//defer buffer.Close()
 	for i := 0; i < b.N; i++ {
-		buffer, _ := NewRingBuffer(16, 10)
-		buffer.Close()
+		buffer, _ := NewRingBuffer(L0, 2)
+
+		batch, _ := buffer.Claim(1)
+		buffer.CancelBatch(batch)
 		//batch, _ = buffer.Claim(1)
 		//batch.Entries[0].CopyFrom(data)
 		//batch.Publish()
+
+		buffer.Close()
 	}
+}
+
+func Benchmark_Claim_and_cancel(b *testing.B) {
+	log.Printf("Bench: %d", b.N)
+	buffer, _ := NewRingBuffer(L12, 2)
+	for i := 0; i < b.N; i++ {
+		batch, _ := buffer.Claim(1)
+		buffer.CancelBatch(batch)
+	}
+	buffer.Close()
 }
 
 // go test -c

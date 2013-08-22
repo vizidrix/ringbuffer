@@ -9,9 +9,8 @@
 //#include <xmmintrin.h>
 
 inline uint64_t rb_get_buffer_size_from_type(uint8_t buffer_type) {
-	static const uint64_t buffer_sizes[14] =
+	static const uint64_t buffer_sizes[13] =
 	{
-		0x00000000,
 		0x00000040, //             64	=	      64
 		0x00000200, //         8 * 64	=        512
 		0x00000400, //        16 * 64	=      1,024
@@ -69,7 +68,13 @@ void rb_print_info(rb_buffer_info* info) {
 int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_type, uint8_t chunk_count) {
 	// Allocate space to hold the buffer and info structs
 	*buffer_ptr = malloc(sizeof(rb_buffer));
+	if(!buffer_ptr) {
+		return 1;
+	}
 	(*buffer_ptr)->info = malloc(sizeof(rb_buffer_info));
+	if(!(*buffer_ptr)->info) {
+		return 1;
+	}
 	uint64_t buffer_size = rb_get_buffer_size_from_type(buffer_type);
 	// Populate the info struct
 	(*buffer_ptr)->info->buffer_type = buffer_type;
@@ -86,6 +91,9 @@ int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_type, uint8_t chunk_co
 	// Allocate giant contiguous byte array to hold the entries
 	//DebugPrint("Allocating data_buffer: %d * (%d * 32) = %d", buffer_size, chunk_count, buffer_size * (chunk_count << 5));
 	(*buffer_ptr)->data_buffer = malloc(buffer_size * (chunk_count << 5));
+	if(!(*buffer_ptr)->data_buffer) {
+		return 1;
+	}
 
 	return 0;
 }
@@ -100,14 +108,6 @@ rb_buffer_info * rb_get_info(rb_buffer * buffer) {
 	return buffer->info;
 }
 
-//struct rb_batch {
-//	rb_buffer_info *	info;			/** < Holds buffer settings */
-//	uint8_t				size;			/** < The number of slots owned by this batch */
-//	uint8_t				pub_mask;		/** < By default this is all on (max value).  Flipping a bit off will cause the ring buffer to skip that slot */
-//
-//	void *				data_buffer;	/** < Pointer to the slot(s) owned by this batch in the buffer */
-//};
-
 /*  ! ! ! ! !
 
 rb_claim and rb_publish are NOT thread safe and must somehow be
@@ -119,6 +119,7 @@ unsigned long const MICROSECOND = 1000L;
 
 //rb_batch * rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count) {
 int rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count) {
+	//DebugPrint("Claim");
 	// TODO: Pool batch alloc's?
 	if(count > buffer->info->buffer_size) {
 		perror("Requested batch size exceeds buffer size");
@@ -128,13 +129,13 @@ int rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count) {
 	uint64_t target_position = target_seq_num & buffer->size_mask;
 	uint64_t current_barrier = buffer->read_barrier + buffer->size_mask;
 	uint64_t current_position = buffer->read_barrier & buffer->size_mask;
-	DebugPrint("T Seq: %d > %d && T Pos: %d > %d ?", target_seq_num, current_barrier, target_position, current_position);
+	//DebugPrint("T Seq: %d > %d && T Pos: %d > %d ?", target_seq_num, current_barrier, target_position, current_position);
 	uint16_t backoff = 0;
 	while(target_seq_num > current_barrier && target_position > current_position) {
 		
 		if((backoff & 0xFF) == 0x00) {
 			if((backoff / 0xFF) > 0xFF) {
-				DebugPrint("Backoff: %d", ((backoff / 0xFF)+1));
+				//DebugPrint("Backoff: %d", ((backoff / 0xFF)+1));
 				backoff = 0;
 			}
 			nanosleep((struct timespec[]){{0, MICROSECOND * ((backoff / 0xFF)+1)}}, NULL);
@@ -142,12 +143,17 @@ int rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count) {
 		backoff++;
 	}
 	*batch = malloc(sizeof(rb_batch));
+	if(!batch) {
+		DebugPrint("dead batch");
+		return 1;
+	}
 	(*batch)->info = buffer->info;
 	(*batch)->batch_num = buffer->batch_num;
 	(*batch)->seq_num = buffer->write_seq_num;
 	(*batch)->size = count;
 	(*batch)->pub_mask = 0xFF;
-	(*batch)->data_buffer = (&buffer->data_buffer)[buffer->write_seq_num];
+	// Enfoce buffer length here, causing segfaults
+	//(*batch)->data_buffer = (&buffer->data_buffer)[buffer->write_seq_num];
 
 	buffer->batch_num++;
 	buffer->write_seq_num += count;
@@ -155,13 +161,15 @@ int rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count) {
 	return 0;
 }
 
-int rb_cancel(rb_batch * batch) {
+int rb_cancel(rb_buffer * buffer, rb_batch * batch) {
+	//DebugPrint("Canceling batch");
 	free(batch);
 
 	return 0;
 }
 
-int rb_publish(rb_batch * batch) {
+int rb_publish(rb_buffer * buffer, rb_batch * batch) {
+	//DebugPrint("Publishing batch");
 	free(batch);
 
 	return 0;

@@ -17,19 +17,19 @@ import (
 type BUFFER_TYPES uint16
 
 const (
-	L0  BUFFER_TYPES = 0x01 << iota //         1 * 64 	=         64 (iota has been reset)
-	L1                              //         8 * 64 	=        512
-	L2                              //        16 * 64 	=      1,024
-	L3                              //        32 * 64 	=      2,048
-	L4                              //        64 * 64 	=      4,096
-	L5                              //       8 * 4096 	=     32,768
-	L6                              //      16 * 4096 	=     65,536
-	L7                              //      32 * 4096 	=    131,072
-	L8                              // 	    64 * 4096 	=    262,144
-	L9                              //  8 * 64 * 4096 	=  2,097,152
-	L10                             // 16 * 64 * 4096 	=  4,194,304
-	L11                             // 32 * 64 * 4096 	=  8,388,608
-	L12                             // 64 * 64 * 4096 	= 16,777,216
+	L0  BUFFER_TYPES = iota //         1 * 64 	=         64 (iota has been reset)
+	L1                      //         8 * 64 	=        512
+	L2                      //        16 * 64 	=      1,024
+	L3                      //        32 * 64 	=      2,048
+	L4                      //        64 * 64 	=      4,096
+	L5                      //       8 * 4096 	=     32,768
+	L6                      //      16 * 4096 	=     65,536
+	L7                      //      32 * 4096 	=    131,072
+	L8                      // 	    64 * 4096 	=    262,144
+	L9                      //  8 * 64 * 4096 	=  2,097,152
+	L10                     // 16 * 64 * 4096 	=  4,194,304
+	L11                     // 32 * 64 * 4096 	=  8,388,608
+	L12                     // 64 * 64 * 4096 	= 16,777,216
 )
 
 type RingBuffer struct {
@@ -48,17 +48,17 @@ type Entry struct {
 func NewRingBuffer(buffer_size BUFFER_TYPES, entry_size uint64) (*RingBuffer, error) {
 	//DebugPrint("Making ring buffer [ Mode: %d / Size: %d / Blocks: %d ]", writer_mode, buffer_size, entry_size)
 	buffer := &RingBuffer{}
-	result, err := C.rb_init_buffer(&buffer.buffer_ptr, C.uint8_t(buffer_size), C.uint8_t(entry_size))
+	result := C.rb_init_buffer(&buffer.buffer_ptr, C.uint8_t(buffer_size), C.uint8_t(entry_size))
 	if result != 0 {
-		return nil, errors.New(fmt.Sprintf("Error initializing ring buffer [%d]: %s", result, err))
+		return nil, errors.New(fmt.Sprintf("Error initializing ring buffer [%d]", result))
 	}
 	return buffer, nil
 }
 
 func (buffer *RingBuffer) Close() error {
-	result, err := C.rb_release_buffer(buffer.buffer_ptr)
+	result := C.rb_release_buffer(buffer.buffer_ptr)
 	if result != 0 {
-		return errors.New(fmt.Sprintf("Error closing ring buffer [%d]: %s", result, err))
+		return errors.New(fmt.Sprintf("Error closing ring buffer [%d]", result))
 	}
 	return nil
 }
@@ -89,7 +89,7 @@ func (buffer *RingBuffer) Claim(count uint8) (*Batch, error) {
 	}
 	batch := (*Batch)(unsafe.Pointer(batch_ptr))
 
-	log.Printf("Batch: %s", batch)
+	//log.Printf("Batch: %s", batch)
 
 	return batch, nil
 	//batch := make([]Entry, count)
@@ -98,6 +98,18 @@ func (buffer *RingBuffer) Claim(count uint8) (*Batch, error) {
 	//return &Batch{
 	//	Entries: make([]Entry, count),
 	//}, nil
+}
+
+func (buffer *RingBuffer) CancelBatch(batch *Batch) error {
+	C.rb_cancel(buffer.buffer_ptr, (*[0]byte)(unsafe.Pointer(batch)))
+
+	return nil
+}
+
+func (buffer *RingBuffer) PublishBatch(batch *Batch) error {
+	C.rb_publish(buffer.buffer_ptr, (*[0]byte)(unsafe.Pointer(batch)))
+
+	return nil
 }
 
 func (entry *Entry) CopyFrom(data []byte) error {
