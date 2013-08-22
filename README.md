@@ -1,7 +1,7 @@
 RingBuffer for Go
 - Large sections implemented in C using CGO
 
-[![Build Status](https://drone.io/github.com/Vizidrix/ringbuffer/status.png)](https://drone.io/github.com/Vizidrix/ringbuffer/latest)
+[![Build Status](https://drone.io/github.com/vizidrix/ringbuffer/status.png)](https://drone.io/github.com/vizidrix/ringbuffer/latest)
 
 ## Introduction ##
 
@@ -17,11 +17,11 @@ This library is very largely inspired by the contributions of the LMAX dev team 
 
 ## Features ##
 
-Batchable allocation of buffer entries
-Transaction support via batch claim, publish and release
-Zero copy buffer population
-Lock-free for single producer, multi consumer scenario
-* Future support for multi producer fan-in planned
+> Batchable allocation of buffer entries
+> Transaction support via batch claim, publish and release
+> Zero copy buffer population
+> Lock-free for single producer, multi consumer scenario
+>> Future support for multi producer fan-in planned
 
 
 A few unit tests to try and prove the functionality of the buffer.
@@ -103,7 +103,7 @@ Tech
 License
 ----
 
-https://github.com/Vizidrix/gocqrs/blob/master/LICENSE
+https://github.com/vizidrix/ringbuffer/blob/master/LICENSE
 
 ----
 ## Edited
@@ -111,5 +111,5 @@ https://github.com/Vizidrix/gocqrs/blob/master/LICENSE
 
 ----
 ## Credits
-* Vizidrix <https://github.com/organizations/Vizidrix>
+* Vizidrix <https://github.com/organizations/vizidrix>
 * Perry Birch <https://github.com/PerryBirch>
