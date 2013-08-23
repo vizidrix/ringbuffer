@@ -24,19 +24,16 @@ type Given_a_size_64_writer_buffer struct {
 var _ = Suite(&Given_nothing{})
 var _ = Suite(&Given_a_size_64_writer_buffer{})
 
-/*
 func (g *Given_nothing) Test_Should_be_able_to_create_a_ring_buffer(c *C) {
 	buffer, _ := NewRingBuffer(L6, 2)
 	info := buffer.GetInfo()
-	//log.Fatalf("Info: %s", info)
+
 	c.Assert(info.GetBufferType(), Equals, L6)
 	c.Assert(info.GetBufferSize(), Equals, uint64(65536))
-	//c.Assert(info.GetChunkCount(), Equals, uint8(2))
 	c.Assert(info.GetDataSize(), Equals, uint64(2))
 	c.Assert(info.GetEntrySize(), Equals, uint64(8))
 	buffer.Close()
 }
-*/
 
 func (g *Given_a_size_64_writer_buffer) SetUpTest(c *C) {
 	g.buffer, _ = NewRingBuffer(L0, 6)
@@ -46,45 +43,35 @@ func (g *Given_a_size_64_writer_buffer) TearDownTest(c *C) {
 	g.buffer.Close()
 }
 
-/*
 func (g *Given_a_size_64_writer_buffer) Test_Should_populate_RingBufferInfo(c *C) {
 	info := g.buffer.GetInfo()
 
-	//log.Printf("Info: %s", info)
 	c.Assert(info.GetBufferType(), Equals, L0)
 	c.Assert(info.GetBufferSize(), Equals, uint64(64))
-	//c.Assert(info.GetChunkCount(), Equals, uint8(2))
-	c.Assert(info.GetDataSize(), Equals, uint64(2))
-	c.Assert(info.GetEntrySize(), Equals, uint64(8))
+	c.Assert(info.GetDataSize(), Equals, uint64(6))
+	c.Assert(info.GetEntrySize(), Equals, uint64(12))
 }
-*/
 
 func (g *Given_a_size_64_writer_buffer) Test_Should_match_position_and_info_when_a_batch_is_claimed(c *C) {
 	EnableDebug()
 	defer DisableDebug()
 
-	batch1, _ := g.buffer.Claim(3)
-	//batch2, _ := g.buffer.Claim(2)
-	//batch3, _ := g.buffer.Claim(3)
+	batch1, _ := g.buffer.Claim(1)
+	batch2, _ := g.buffer.Claim(2)
+	batch3, _ := g.buffer.Claim(3)
 
-	//log.Printf("Batch1: %s [ % v ] [err: %s]", batch1, batch1, err)
+	//log.Printf("Batch1: %s [ % v ]", batch1, batch1)
+	//log.Printf("Batch2: %s [ % v ]", batch2, batch2)
 
 	c.Assert(batch1.GetBatchNum(), Equals, uint64(1))
-	//c.Assert(batch2.GetBatchNum(), Equals, uint64(2))
-	//c.Assert(batch3.GetBatchNum(), Equals, uint64(3))
+	c.Assert(batch2.GetBatchNum(), Equals, uint64(2))
+	c.Assert(batch3.GetBatchNum(), Equals, uint64(3))
 
-	//c.Assert(batch1.SeqNum, Equals, uint64(0))
-	//c.Assert(batch2.SeqNum, Equals, uint64(1))
-	//c.Assert(batch3.SeqNum, Equals, uint64(3))
-
-	c.Assert(batch1.GetBatchSize(), Equals, uint8(1))
-	//c.Assert(batch2.GetBatchSize(), Equals, uint8(2))
-	//c.Assert(batch3.GetBatchSize(), Equals, uint8(3))
-
-	c.Fail()
+	c.Assert(batch1.GetBatchSize(), Equals, uint16(1))
+	c.Assert(batch2.GetBatchSize(), Equals, uint16(2))
+	c.Assert(batch3.GetBatchSize(), Equals, uint16(3))
 }
 
-/*
 func (g *Given_a_size_64_writer_buffer) Test_Should_not_allow_allocation_beyond_max_size(c *C) {
 	_, err := g.buffer.Claim(255)
 
@@ -130,7 +117,6 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_block_if_buffer_is_too_full_
 		}
 	}
 }
-*/
 
 /*
 func (g *Given_a_single_writer_buffer) Test_When_a_single_entry_is_published(c *C) {

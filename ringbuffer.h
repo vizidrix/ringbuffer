@@ -51,8 +51,8 @@ extern int rb_release_buffer(rb_buffer * buffer);
 //extern int rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count);
 //extern void* rb_claim(rb_buffer * buffer, uint8_t count);
 extern int rb_claim(rb_buffer * buffer, void ** batch, uint16_t count);
-extern int rb_cancel(rb_buffer * buffer, rb_batch * batch);
-extern int rb_publish(rb_buffer * buffer, rb_batch * batch);
+extern int rb_cancel(rb_buffer * buffer, rb_batch * batch, uint16_t count);
+extern int rb_publish(rb_buffer * buffer, rb_batch * batch, uint16_t count);
 
 extern rb_buffer_info * rb_get_info(rb_buffer * buffer);
 

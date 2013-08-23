@@ -150,11 +150,11 @@ int rb_claim(rb_buffer * buffer, void ** batch_ptr, uint16_t count) {
 	}
 	uint64_t target_seq_num = buffer->write_seq_num + count;
 	uint64_t target_position = target_seq_num & buffer->size_mask;
-	uint64_t current_barrier = buffer->read_barrier + buffer->size_mask;
-	uint64_t current_position = buffer->read_barrier & buffer->size_mask;
+	uint64_t current_read_barrier = buffer->read_barrier + buffer->size_mask;
+	uint64_t current_read_position = buffer->read_barrier & buffer->size_mask;
 	//DebugPrint("T Seq: %d > %d && T Pos: %d > %d ?", target_seq_num, current_barrier, target_position, current_position);
 	uint16_t backoff = 0;
-	while(target_seq_num > current_barrier && target_position > current_position) {
+	while(target_seq_num > current_read_barrier && target_position > current_read_position) {
 		
 		if((backoff & 0xFF) == 0x00) {
 			if((backoff / 0xFF) > 0xFF) {
@@ -166,28 +166,73 @@ int rb_claim(rb_buffer * buffer, void ** batch_ptr, uint16_t count) {
 		backoff++;
 	}
 
-	char * stuff[count];
+/*
+	//	char * stuff[count];
+	//stuff = ((char (*)[count])(*batch_ptr));
+	//stuff = ([]char *)malloc(sizeof(char *));// = malloc(sizeof(char *) * count);
+	//&(*batch_ptr) = stuff;
 	int i = 0;
 	int j = 0;
 	for(i = 0; i < count; i++) {
-		stuff[i] = malloc(sizeof(char *));// * buffer->info->entry_size);
+		//DebugPrint("Stuff: %d", ((char (*)[count])(*batch_ptr)));
+		//((char (*)[count])(*batch_ptr))[i] = malloc(sizeof(char *));// * buffer->info->entry_size);
 
-		stuff[i] = &buffer->data_buffer[buffer->info->entry_size * i];
-		/*
-		stuff[i][0] = 1;
-		stuff[i][1] = 1;
-		stuff[i][2] = 1;
-		stuff[i][3] = 1;
-		stuff[i][4] = 1;
-		stuff[i][5] = 1;
-		stuff[i][6] = &buffer->data_buffer[buffer->info->entry_size * i];
-		*/
-
-		//for(j = 0; j < buffer->info->entry_size; j++) {
-		//	stuff[i][j] = (i * buffer->info->entry_size) + j;
-		//}
+		int index = buffer->info->entry_size * (buffer->write_seq_num + i);
+		DebugPrint("Index: %d", index);
+		((char (*)[count])(*batch_ptr))[i] = (char (*))&buffer->data_buffer[index];
+		
+		((char (*)[count])(*batch_ptr))[i][0] = (buffer->batch_num >> 24) & 0xFF;
+		((char (*)[count])(*batch_ptr))[i][1] = (buffer->batch_num >> 16) & 0xFF;
+		((char (*)[count])(*batch_ptr))[i][2] = (buffer->batch_num >> 8) & 0xFF;
+		((char (*)[count])(*batch_ptr))[i][3] = buffer->batch_num & 0xFF;
+		((char (*)[count])(*batch_ptr))[i][4] = (i >> 8) & 0xFF;
+		((char (*)[count])(*batch_ptr))[i][5] = i & 0xFF;
+		DebugPrint("Stuff: %d", ((char (*)[count])(*batch_ptr))[i][5]);
 	}
-	(*batch_ptr) = &stuff;
+	//(*batch_ptr) = &stuff;
+*/
+
+
+
+	//char * stuff[count] = (*batch_ptr);
+	//char * stuff[count];
+	char ** batch = malloc(sizeof(char *) * count);
+
+	//char (* stuff)[count];	
+	//stuff) = malloc(sizeof(char *) * count);
+	//stuff = (char (*)[count])(*batch_ptr);
+	//stuff = ([]char *)malloc(sizeof(char *));// = malloc(sizeof(char *) * count);
+	//&(*batch_ptr) = stuff;
+	int i = 0;
+	int j = 0;
+	for(i = 0; i < count; i++) {
+		//DebugPrint("Stuff: %d", &batch[i]);
+		batch[i] = malloc(sizeof(char *));// * buffer->info->entry_size);
+		//DebugPrint("Stuff: %d", &batch[i]);
+		int index = buffer->info->entry_size * (buffer->write_seq_num + i);
+		//DebugPrint("Index: %d", index);
+		batch[i] = &buffer->data_buffer[index];
+		
+		batch[i][0] = (buffer->batch_num >> 24) & 0xFF;
+		batch[i][1] = (buffer->batch_num >> 16) & 0xFF;
+		batch[i][2] = (buffer->batch_num >> 8) & 0xFF;
+		batch[i][3] = buffer->batch_num & 0xFF;
+		batch[i][4] = (i >> 8) & 0xFF;
+		batch[i][5] = i & 0xFF;
+		//DebugPrint("Stuff: %d", batch[i][5]);
+	}
+	//(*batch_ptr) = &stuff;
+	(*batch_ptr) = &batch[0];
+
+
+
+	//char value = ((char (*)[count])(*batch_ptr))[0][5];
+	//DebugPrint("Value: %d", value);
+
+
+
+
+
 
 	//char ** batch = (char**)(malloc(sizeof(char *) * count));
 	//batch_ptr = batch;
@@ -348,17 +393,20 @@ int rb_claim(rb_buffer * buffer, void ** batch_ptr, uint16_t count) {
 	
 }
 
-int rb_cancel(rb_buffer * buffer, rb_batch * batch) {
+int rb_free_batch(rb_batch * batch, uint16_t count) {
+
+}
+int rb_cancel(rb_buffer * buffer, rb_batch * batch, uint16_t count) {
 	//DebugPrint("Canceling batch");
-	free(batch->data_buffer);
-	free(batch);
+	//free(batch->data_buffer);
+	//free(batch);
 
 	return 0;
 }
 
-int rb_publish(rb_buffer * buffer, rb_batch * batch) {
+int rb_publish(rb_buffer * buffer, rb_batch * batch, uint16_t count) {
 	//DebugPrint("Publishing batch");
-	free(batch);
+	//free(batch);
 
 	return 0;
 }
