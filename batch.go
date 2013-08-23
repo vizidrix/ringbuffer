@@ -11,7 +11,7 @@ type Batch struct {
 	//Size    uint8
 	//PubMask uint8
 
-	Entries []Entry
+	Entries []*Entry
 }
 
 type Entry struct {

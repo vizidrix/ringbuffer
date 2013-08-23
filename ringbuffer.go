@@ -87,24 +87,70 @@ func (buffer *RingBuffer) Claim(count uint16) (*Batch, error) {
 		return nil, errors.New(fmt.Sprintf("Error: %d", result))
 	}
 
-	batch := *(*[]*uint8)(unsafe.Pointer(&reflect.SliceHeader{
+	/* This section works!! */
+	/*
+		batch := *(*[]*byte)(unsafe.Pointer(&reflect.SliceHeader{
+			Data: uintptr(batch_ptr),
+			Len:  int(count),
+			Cap:  int(count),
+		}))
+		log.Printf("Batch: %s", ((*Batch)(unsafe.Pointer(&batch))))
+
+		//log.Printf("Len: %d", len(batch))
+		//log.Printf("Entry size: %d", int(buffer.GetInfo().entry_size))
+		//log.Printf("Batch: %s", batch[:])
+		for i := 0; i < int(count); i++ {
+			//log.Printf("Batch[%d]: %s", i, batch[i])
+			entry := *(*Entry)(unsafe.Pointer(&reflect.SliceHeader{
+				Data: uintptr(unsafe.Pointer(batch[i])),
+				Len:  int(buffer.GetInfo().entry_size),
+				Cap:  int(buffer.GetInfo().entry_size),
+			}))
+			log.Printf("Entry[%d]: %v", i, entry.Data[:])
+		}
+	*/
+
+	//var temp *Batch = (*Batch)(unsafe.Pointer(&reflect.SliceHeader{
+	batch := (*Batch)(unsafe.Pointer(&reflect.SliceHeader{
 		Data: uintptr(batch_ptr),
 		Len:  int(count),
 		Cap:  int(count),
 	}))
-
-	log.Printf("Len: %d", len(batch))
-	log.Printf("Entry size: %d", int(buffer.GetInfo().entry_size))
-	log.Printf("Batch: %s", batch[:])
 	for i := 0; i < int(count); i++ {
-		log.Printf("Batch[%d]: %s", i, batch[i])
-		entry := *(*[]uint8)(unsafe.Pointer(&reflect.SliceHeader{
-			Data: uintptr(unsafe.Pointer(batch[i])),
+		batch.Entries[i] = (*Entry)(unsafe.Pointer(&reflect.SliceHeader{
+			Data: uintptr(unsafe.Pointer(batch.Entries[i])),
 			Len:  int(buffer.GetInfo().entry_size),
 			Cap:  int(buffer.GetInfo().entry_size),
 		}))
-		log.Printf("Entry[%d]: %v", 0, entry[:])
+		log.Printf("Batch Entry[%d]: %v", i, batch.Entries[i].Data[:])
 	}
+	log.Printf("Batch: %s", batch)
+	return batch, nil
+
+	//entry := *(*Entry)(unsafe.Pointer(&reflect.SliceHeader{
+
+	//batch := *(*[]*byte)(unsafe.Pointer(&reflect.SliceHeader{
+	/*
+		batch := *(*[]*Entry)(unsafe.Pointer(&reflect.SliceHeader{
+			Data: uintptr(batch_ptr),
+			Len:  int(count),
+			Cap:  int(count),
+		}))
+		log.Printf("Len: %d", len(batch))
+		log.Printf("Entry size: %d", int(buffer.GetInfo().entry_size))
+		log.Printf("Batch: %s", batch[:])
+		for i := 0; i < int(count); i++ {
+			log.Printf("Batch[%d]: %s", i, batch[i])
+			entry := *(*Entry)(unsafe.Pointer(&reflect.SliceHeader{
+				Data: uintptr(unsafe.Pointer(&batch[i])),
+				Len:  int(buffer.GetInfo().entry_size),
+				Cap:  int(buffer.GetInfo().entry_size),
+			}))
+			//entry.Data[0] = 10
+			log.Printf("Entry[%d]: %v", 0, entry.Data[:])
+
+		}
+	*/
 	/*
 		log.Printf("Batch: %s [ % v ]", batch_ptr, batch_ptr)
 		log.Printf("Batch: %s [ % v ]", &batch_ptr, &batch_ptr)
@@ -119,7 +165,7 @@ func (buffer *RingBuffer) Claim(count uint16) (*Batch, error) {
 		log.Printf("Len: %d", len(slice))
 	*/
 
-	return nil, nil
+	//return nil, nil
 	/*
 		var slice []Entry
 		ptr := uintptr(unsafe.Pointer(array))

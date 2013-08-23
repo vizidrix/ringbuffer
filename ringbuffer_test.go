@@ -63,13 +63,13 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_match_position_and_info_when
 	EnableDebug()
 	defer DisableDebug()
 
-	batch1, err := g.buffer.Claim(3)
+	batch1, _ := g.buffer.Claim(3)
 	//batch2, _ := g.buffer.Claim(2)
 	//batch3, _ := g.buffer.Claim(3)
 
-	log.Printf("Batch1: %s [ % v ] [err: %s]", batch1, batch1, err)
+	//log.Printf("Batch1: %s [ % v ] [err: %s]", batch1, batch1, err)
 
-	//c.Assert(batch1.GetBatchNum(), Equals, uint64(1))
+	c.Assert(batch1.GetBatchNum(), Equals, uint64(1))
 	//c.Assert(batch2.GetBatchNum(), Equals, uint64(2))
 	//c.Assert(batch3.GetBatchNum(), Equals, uint64(3))
 
@@ -77,7 +77,7 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_match_position_and_info_when
 	//c.Assert(batch2.SeqNum, Equals, uint64(1))
 	//c.Assert(batch3.SeqNum, Equals, uint64(3))
 
-	//c.Assert(batch1.GetBatchSize(), Equals, uint8(1))
+	c.Assert(batch1.GetBatchSize(), Equals, uint8(1))
 	//c.Assert(batch2.GetBatchSize(), Equals, uint8(2))
 	//c.Assert(batch3.GetBatchSize(), Equals, uint8(3))
 

@@ -109,9 +109,9 @@ int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_type, uint64_t data_si
 		return 1;
 	}
 
-	DebugPrint("Buffer size: %d", (*buffer_ptr)->info->buffer_size);
-	DebugPrint("Entry size: %d", (*buffer_ptr)->info->entry_size);
-	DebugPrint("Total size: %d", (*buffer_ptr)->info->total_size);
+	//DebugPrint("Buffer size: %d", (*buffer_ptr)->info->buffer_size);
+	//DebugPrint("Entry size: %d", (*buffer_ptr)->info->entry_size);
+	//DebugPrint("Total size: %d", (*buffer_ptr)->info->total_size);
 	int i = 0;
 	for (i = 0; i < (*buffer_ptr)->info->total_size; i++) {
 		(*buffer_ptr)->data_buffer[i] = 0xFF - (i % 0xFF);
@@ -166,12 +166,23 @@ int rb_claim(rb_buffer * buffer, void ** batch_ptr, uint16_t count) {
 		backoff++;
 	}
 
-	uint8_t * stuff[count];
+	char * stuff[count];
 	int i = 0;
 	int j = 0;
 	for(i = 0; i < count; i++) {
 		stuff[i] = malloc(sizeof(char *));// * buffer->info->entry_size);
+
 		stuff[i] = &buffer->data_buffer[buffer->info->entry_size * i];
+		/*
+		stuff[i][0] = 1;
+		stuff[i][1] = 1;
+		stuff[i][2] = 1;
+		stuff[i][3] = 1;
+		stuff[i][4] = 1;
+		stuff[i][5] = 1;
+		stuff[i][6] = &buffer->data_buffer[buffer->info->entry_size * i];
+		*/
+
 		//for(j = 0; j < buffer->info->entry_size; j++) {
 		//	stuff[i][j] = (i * buffer->info->entry_size) + j;
 		//}
