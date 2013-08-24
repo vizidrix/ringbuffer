@@ -4,7 +4,15 @@
 #include <time.h>
 
 #include "ringbuffer.h"
-#include "util.h"
+//#include "util.h"
+//#ifndef _POOL_H_
+//#include "pool.h"
+//#endif
+//http://contiki.sourceforge.net/docs/2.6/a00224.html
+
+//http://stackoverflow.com/questions/9718116/improving-c-circular-buffer-efficiency
+
+//https://github.com/pthrasher/c-generic-ring-buffer/blob/master/ringbuffer.h
 
 //#include <xmmintrin.h>
 
@@ -46,16 +54,7 @@ struct rb_batch {
 	uint8_t **				data_buffer;	/** < Array of pointers to the slot(s) owned by this batch in the buffer */
 };
 
-/* This should morph into a pool of pointers
-typedef struct rb_batch_pool {
-	rb_batch *			batch_pool;
-	char **				entry_pool;
 
-	uint64_t			batch_pool_count;
-	uint64_t			batch_pool_index;
-	uint64_t			
-} rb_batch_pool;
-*/
 
 struct rb_buffer {
 	rb_buffer_info *	info;			/** < Holds buffer settings */
@@ -67,33 +66,41 @@ struct rb_buffer {
 	volatile uint64_t	write_barrier;	/** < Index of the oldest entry released for production but still in use by a writer */
 	volatile uint64_t	batch_num;		/** < Index of the last batch allocated to a producer */
 
-	uint8_t *				data_buffer;
+	pool *				entry_pointers;
+	uint8_t *			data_buffer;
 };
 
-uint64_t const DATA_HEADER_SIZE = 6;
+uint8_t const SMALL_BATCH_HEADER_SIZE = 5;
+uint8_t const LARGE_BATCH_HEADER_SIZE = 6;
 //#define DATA_HEADER_SIZE 6; // 4 to hold batch_num and 2 to hold batch_index (max batch size of 65,535)
 
-int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_type, uint64_t data_size) {
+int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_type, rb_batching_mode_t batching_mode, uint64_t data_size) {
 	// Allocate space to hold the buffer and info structs
 	*buffer_ptr = malloc(sizeof(rb_buffer));
-	if(!buffer_ptr) {
+	if(!*buffer_ptr) {
 		return 1;
 	}
 	(*buffer_ptr)->info = malloc(sizeof(rb_buffer_info));
 	if(!(*buffer_ptr)->info) {
 		return 1;
 	}
-	//uint64_t buffer_size = ;
-	//uint64_t entry_size = DATA_HEADER_SIZE + data_size;
+
 	// Populate the info struct
 	(*buffer_ptr)->info->buffer_type = buffer_type;
 	(*buffer_ptr)->info->buffer_size = rb_get_buffer_size_from_type(buffer_type);
-	//(*buffer_ptr)->info->chunk_count = chunk_count;
-	(*buffer_ptr)->info->data_size = data_size;//chunk_count << 5; // * 32
-	(*buffer_ptr)->info->entry_size = DATA_HEADER_SIZE + data_size;//DATA_HEADER_SIZE + data_size;
-	//(*buffer_ptr)->info->total_size = buffer_size * (chunk_count << 5);
-	//uint64_t total_size = buffer_size * (DATA_HEADER_SIZE + data_size);
-	//(*buffer_ptr)->info->total_size = total_size;
+	(*buffer_ptr)->info->batching_mode = batching_mode;
+	(*buffer_ptr)->info->data_size = data_size;
+	switch(batching_mode) {
+		case NONE: { // If batching is disabled then there is no batch header
+			(*buffer_ptr)->info->entry_size = data_size; break;
+		}
+		case SMALL_BATCH: { // Small batches are 256 entry max but take 1 less byte in data
+			(*buffer_ptr)->info->entry_size = SMALL_BATCH_HEADER_SIZE + data_size; break;
+		}
+		case LARGE_BATCH: { // Large batches are 65536 entry max and takes 2 bytes in data
+			(*buffer_ptr)->info->entry_size = LARGE_BATCH_HEADER_SIZE + data_size; break;
+		}
+	}
 	(*buffer_ptr)->info->total_size = (*buffer_ptr)->info->buffer_size * (*buffer_ptr)->info->entry_size;
 	//rb_print_info((*buffer_ptr)->info);
 	// Populate the buffer struct
@@ -102,6 +109,11 @@ int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_type, uint64_t data_si
 	(*buffer_ptr)->write_seq_num = 0;
 	(*buffer_ptr)->batch_num = 1;
 	
+	// Init the pointer pool
+	//if(ptr_pool_init(&((*buffer_ptr)->entry_pointers), (*buffer_ptr)->info->buffer_size) != 0) {
+	if(pool_init(&(*buffer_ptr)->entry_pointers, (*buffer_ptr)->info->buffer_size) != 0) {
+		return 1;
+	}
 	// Allocate giant contiguous byte array to hold the entries
 	//DebugPrint("Allocating data_buffer: %d * (%d * 32) = %d", buffer_size, chunk_count, buffer_size * (chunk_count << 5));
 	(*buffer_ptr)->data_buffer = malloc((*buffer_ptr)->info->total_size);
@@ -127,6 +139,7 @@ int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_type, uint64_t data_si
 int rb_release_buffer(rb_buffer * buffer) {
 	//DebugPrint("Released Buffer: %d", buffer->seq_num);
 	free(buffer->data_buffer);
+	free(buffer->entry_pointers);
 	free(buffer->info);
 	free(buffer);
 }
@@ -136,14 +149,22 @@ int rb_release_buffer(rb_buffer * buffer) {
 rb_claim and rb_publish are NOT thread safe and must somehow be
 fanned in for scenarios other than single producer
 
+654 ns/op Buffer(L12, 2)
+
 */
 unsigned long const MILLISECOND = 1000000L;
 unsigned long const MICROSECOND = 1000L;
 
+int rb_claim(rb_buffer * buffer, void ** entry) {
 
-//int rb_claim(rb_buffer * buffer, void ** batch_ptr, uint16_t count) {
-int rb_claim(rb_buffer * buffer, void ** batch_ptr, uint16_t count) {
+}
+
+int rb_claim_batch(rb_buffer * buffer, void ** batch_ptr, uint16_t count) {
 	// TODO: Pool batch alloc's?
+	if(buffer->info->batching_mode == NONE) {
+		perror("Cannot claim batches when baching mode is NONE");
+		return 1;
+	}
 	if(count > buffer->info->buffer_size) {
 		perror("Requested batch size exceeds buffer size");
 		return 1;
@@ -166,237 +187,55 @@ int rb_claim(rb_buffer * buffer, void ** batch_ptr, uint16_t count) {
 		backoff++;
 	}
 
-/*
-	//	char * stuff[count];
-	//stuff = ((char (*)[count])(*batch_ptr));
-	//stuff = ([]char *)malloc(sizeof(char *));// = malloc(sizeof(char *) * count);
-	//&(*batch_ptr) = stuff;
-	int i = 0;
-	int j = 0;
-	for(i = 0; i < count; i++) {
-		//DebugPrint("Stuff: %d", ((char (*)[count])(*batch_ptr)));
-		//((char (*)[count])(*batch_ptr))[i] = malloc(sizeof(char *));// * buffer->info->entry_size);
-
-		int index = buffer->info->entry_size * (buffer->write_seq_num + i);
-		DebugPrint("Index: %d", index);
-		((char (*)[count])(*batch_ptr))[i] = (char (*))&buffer->data_buffer[index];
-		
-		((char (*)[count])(*batch_ptr))[i][0] = (buffer->batch_num >> 24) & 0xFF;
-		((char (*)[count])(*batch_ptr))[i][1] = (buffer->batch_num >> 16) & 0xFF;
-		((char (*)[count])(*batch_ptr))[i][2] = (buffer->batch_num >> 8) & 0xFF;
-		((char (*)[count])(*batch_ptr))[i][3] = buffer->batch_num & 0xFF;
-		((char (*)[count])(*batch_ptr))[i][4] = (i >> 8) & 0xFF;
-		((char (*)[count])(*batch_ptr))[i][5] = i & 0xFF;
-		DebugPrint("Stuff: %d", ((char (*)[count])(*batch_ptr))[i][5]);
-	}
-	//(*batch_ptr) = &stuff;
-*/
-
-
-
-	//char * stuff[count] = (*batch_ptr);
-	//char * stuff[count];
 	char ** batch = malloc(sizeof(char *) * count);
+	uint64_t pool_ptr = pool_alloc(buffer->entry_pointers, count);
+	uint64_t pool_ptr2 = pool_alloc(buffer->entry_pointers, count);
+	uint64_t pool_ptr3 = pool_alloc(buffer->entry_pointers, count);
+	DebugPrint("pool ptr: %d", pool_ptr);
+	DebugPrint("pool ptr 2: %d", pool_ptr2);
+	DebugPrint("pool ptr 3: %d", pool_ptr3);
 
-	//char (* stuff)[count];	
-	//stuff) = malloc(sizeof(char *) * count);
-	//stuff = (char (*)[count])(*batch_ptr);
-	//stuff = ([]char *)malloc(sizeof(char *));// = malloc(sizeof(char *) * count);
-	//&(*batch_ptr) = stuff;
 	int i = 0;
 	int j = 0;
 	for(i = 0; i < count; i++) {
-		//DebugPrint("Stuff: %d", &batch[i]);
-		batch[i] = malloc(sizeof(char *));// * buffer->info->entry_size);
-		//DebugPrint("Stuff: %d", &batch[i]);
 		int index = buffer->info->entry_size * (buffer->write_seq_num + i);
-		//DebugPrint("Index: %d", index);
 		batch[i] = &buffer->data_buffer[index];
 		
 		batch[i][0] = (buffer->batch_num >> 24) & 0xFF;
 		batch[i][1] = (buffer->batch_num >> 16) & 0xFF;
 		batch[i][2] = (buffer->batch_num >> 8) & 0xFF;
 		batch[i][3] = buffer->batch_num & 0xFF;
-		batch[i][4] = (i >> 8) & 0xFF;
-		batch[i][5] = i & 0xFF;
-		//DebugPrint("Stuff: %d", batch[i][5]);
-	}
-	//(*batch_ptr) = &stuff;
-	(*batch_ptr) = &batch[0];
-
-
-
-	//char value = ((char (*)[count])(*batch_ptr))[0][5];
-	//DebugPrint("Value: %d", value);
-
-
-
-
-
-
-	//char ** batch = (char**)(malloc(sizeof(char *) * count));
-	//batch_ptr = batch;
-	/*
-	if(batch) {
-		int i = 0;
-		for(i = 0; i < count; i++) {
-			batch[i] = malloc(sizeof(char *) * 10);
-			if(batch[i]) {
-				int j = 0;
-				for(j = 0; j < 10; j++) {
-					batch[i][j] = j;
-				}
+		// TODO: Change this switch to a macro?
+		switch(buffer->info->batching_mode) {
+			case SMALL_BATCH: {
+				batch[i][4] = i & 0xFF;
+				break;
+			}
+			case LARGE_BATCH: {
+				batch[i][4] = (i >> 8) & 0xFF;
+				batch[i][5] = i & 0xFF;
+				break;
 			}
 		}
 	}
-	*/
-	//(*batch_ptr) = malloc(sizeof(char*) * count);
+	(*batch_ptr) = &batch[0];
 
-	//batch = malloc(sizeof(char*) * count);
-	//int i, index = 0;
-	//for(i = 0; i < count; i++) {
-		//((char**)(*batch_ptr)) = buffer->data_buffer;
-		//*((char**)(batch_ptr))[i] = buffer->data_buffer;
-	//}
-
-	//(*batch_ptr) = malloc(1000);
-	
-	/*
-	size_t size = (sizeof(char**) * count);
-	DebugPrint("Size: %d", size);
-	char** batch = malloc(sizeof(char**) * count);
-	(*batch_ptr) = &batch;//(void **)batch;
-*/
-/*
-	int i = 0;
-	for(i = 0; i < count; i++) {
-		buffer->data_buffer[i] = i;
-	
-		DebugPrint("BEFORE \t batch/buffer - [%x]: %x / [%x]: %x", batch, batch[i][0], buffer->data_buffer, buffer->data_buffer[i]);
-		
-		batch[i] = &buffer->data_buffer[i];
-
-		DebugPrint("AFTER \t batch/buffer - [%x]: %x / [%x]: %x", batch, batch[i][0], buffer->data_buffer, buffer->data_buffer[i]);
-
-		
-
-		DebugPrint("CAST \t batch_ptr/buffer - [%x]: %x / [%x]: %x", ((char **)(batch_ptr)), ((char **)(batch_ptr))[i][0], buffer->data_buffer, buffer->data_buffer[i]);
-
-		DebugPrint("_");
-	}
-	*.
-	//free(batch);
-	//*batch_ptr = malloc(sizeof(char**) * count);
-	//DebugPrint("batch_ptr: %x", batch_ptr);
-
-	/*
-	//char** batch = malloc(sizeof(char**) * count);
-	char** batch = *batch_ptr;
-	if(!batch) {
-		return 1;
-	}
-	uint64_t index = buffer->write_seq_num * buffer->info->entry_size;
-
-	DebugPrint("Buffer: % x", &buffer->data_buffer);
-	// Need to assign chunks from buffer to array of pointers
-	uint8_t i = 0;
-	for(i = 0; i < count; i++) {
-		//DebugPrint("B")
-		// First will always fit or we'd have already wrapped
-		//batch[i] = &buffer->data_buffer + index;
-		batch[i] = malloc(buffer->info->entry_size);
-
-		// Need to set the batch num and index into the first 6 bytes
-		batch[i][0] = 0x01;
-		batch[i][1] = 0x01;
-		batch[i][2] = 0x01;
-		batch[i][3] = 0x01;
-		batch[i][4] = 0x01;
-		batch[i][5] = 0x01;
-
-		int j = 0;
-		for(j = 0; j < buffer->info->entry_size; j++) {
-			batch[i][j] = 0x01;
-		}
-
-		// Move index to the next slot position
-		index += buffer->info->entry_size;// DATA_HEADER_SIZE + buffer->info->data_size;
-		// Check for overflow on next itteration
-		if(buffer->write_seq_num + i == buffer->info->buffer_size) {
-			// Reached the last slot, time to wrap
-			index = 0;
-		}
-	}
-	*/
-
-	//batch = &((void *)b);
-
-	//batch = (void**)b;
-	//DebugPrint("batch: %x", *batch[0]);
-	//DebugPrint("Index 0: %d", ((char**)batch)[0][1]);
 	buffer->batch_num++;
 	buffer->write_seq_num += count;
 
 	return 0;
-	//return 0;
-
-	/*
-	*batch = malloc(sizeof(rb_batch));
-	if(!*batch || *batch == NULL) {
-		DebugPrint("dead batch");
-		return 1;
-	}
-	//(*batch)->info = buffer->info;
-	//(*batch)->batch_num = buffer->batch_num;
-	//(*batch)->seq_num = buffer->write_seq_num;
-	//(*batch)->size = count;
-	//(*batch)->pub_mask = 0xFF;
-	(*batch)->data_buffer = malloc(sizeof(char**) * count);//char*[count];
-	// Enfoce buffer length here, causing segfaults
-
-	// 391317
-
-	//(*batch)->data_buffer = (&buffer->data_buffer)[buffer->write_seq_num];
-	//char * temp = buffer->data_buffer;
-	uint64_t index = buffer->write_seq_num * buffer->info->entry_size;// (DATA_HEADER_SIZE + buffer->info->data_size);
-	//if(buffer->write_seq_num > 300000) {
-	//	DebugPrint("Begun:\t%d > %d", buffer->write_seq_num, buffer->info->buffer_size);
-	//}
-	//if(buffer->write_seq_num > buffer->info->buffer_size) {
-	//	DebugPrint("%d > %d", buffer->write_seq_num, buffer->info->buffer_size);
-	//	errno(1);
-	//} else {
-	//(*batch)->data_buffer = (&buffer->data_buffer)[buffer->write_seq_num];
-
-	// Need to assign chunks from buffer to array of pointers
-	uint8_t i = 0;
-	for(i = 0; i < count; i++) {
-		// First will always fit or we'd have already wrapped
-		(*batch)->data_buffer[i] = buffer->data_buffer + index;
-
-		// Need to set the batch num and index into the first 6 bytes
-
-		// Move index to the next slot position
-		index += DATA_HEADER_SIZE + buffer->info->data_size;
-		// Check for overflow on next itteration
-		if(buffer->write_seq_num + i == buffer->info->buffer_size) {
-			// Reached the last slot, time to wrap
-			index = 0;
-		}
-	}
-	//(*batch)->data_buffer = temp + index;//[buffer->write_seq_num];
-	//}
-	/*if(buffer->write_seq_num > 300000) {
-		DebugPrint("Finished:\t%d > %d", buffer->write_seq_num, buffer->info->buffer_size);
-	}*/
-
 	
 }
 
+// Internal method to share cleanup between cancel and publish
 int rb_free_batch(rb_batch * batch, uint16_t count) {
 
 }
-int rb_cancel(rb_buffer * buffer, rb_batch * batch, uint16_t count) {
+
+int rb_cancel(rb_buffer * buffer, void * entry);
+int rb_publish(rb_buffer * buffer, void * entry);
+
+int rb_cancel_batch(rb_buffer * buffer, void * batch, uint16_t count) {
 	//DebugPrint("Canceling batch");
 	//free(batch->data_buffer);
 	//free(batch);
@@ -404,7 +243,7 @@ int rb_cancel(rb_buffer * buffer, rb_batch * batch, uint16_t count) {
 	return 0;
 }
 
-int rb_publish(rb_buffer * buffer, rb_batch * batch, uint16_t count) {
+int rb_publish_batch(rb_buffer * buffer, void * batch, uint16_t count) {
 	//DebugPrint("Publishing batch");
 	//free(batch);
 

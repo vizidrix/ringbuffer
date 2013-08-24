@@ -23,9 +23,16 @@ typedef enum { 				//   Multiplier    | Entries
 	L12		= 12,			//  64 * 64 * 4096 = 16,777,216 -- 4 Level Trie ^
 } rb_buffer_size_t;
 
+typedef enum {
+	NONE			= 0,
+	SMALL_BATCH 	= 1,
+	LARGE_BATCH 	= 2,
+} rb_batching_mode_t;
+
 typedef struct rb_buffer_info {
 	uint8_t			buffer_type;	/** < Determines number of slots as specified in rb_buffer_size_t enum */
 	uint64_t		buffer_size;	/** < Number of slots allocated per the rules above */
+	uint8_t			batching_mode;  /** < Sets rules for entry header [ NONE: 0 | SMALL: 5 bytes | LARGE: 6 bytes ] */
 	uint64_t		data_size;		/** < Number of bytes of data for each slot */
 	uint64_t		entry_size;		/** < DATA_HEADER_SIZE + data_size */
 	uint64_t		total_size;		/** < Total number of bytes allocated to the buffer */
@@ -46,13 +53,14 @@ data_size: 		Number of bytes to allocate per entry
 - For example a data_size of 4096 would be bad but 4090 (+6 byte header) would fill cache line exactly
 - If smaller data sizes are desired try to ensure 4096 % (data_size + 6) == 0
 */
-extern int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_size, uint64_t data_size);
+extern int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_size, rb_batching_mode_t batching_mode, uint64_t data_size);
 extern int rb_release_buffer(rb_buffer * buffer);
-//extern int rb_claim(rb_buffer * buffer, rb_batch ** batch, uint8_t count);
-//extern void* rb_claim(rb_buffer * buffer, uint8_t count);
-extern int rb_claim(rb_buffer * buffer, void ** batch, uint16_t count);
-extern int rb_cancel(rb_buffer * buffer, rb_batch * batch, uint16_t count);
-extern int rb_publish(rb_buffer * buffer, rb_batch * batch, uint16_t count);
+extern int rb_claim(rb_buffer * buffer, void ** entry);
+extern int rb_cancel(rb_buffer * buffer, void * entry);
+extern int rb_publish(rb_buffer * buffer, void * entry);
+extern int rb_claim_batch(rb_buffer * buffer, void ** batch, uint16_t count);
+extern int rb_cancel_batch(rb_buffer * buffer, void * batch, uint16_t count);
+extern int rb_publish_batch(rb_buffer * buffer, void * batch, uint16_t count);
 
 extern rb_buffer_info * rb_get_info(rb_buffer * buffer);
 

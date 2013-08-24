@@ -5,11 +5,12 @@ import (
 )
 
 type RingBufferInfo struct {
-	buffer_type uint8
-	buffer_size uint64
-	data_size   uint64
-	entry_size  uint64
-	total_size  uint64
+	buffer_type   uint8
+	buffer_size   uint64
+	batching_mode BATCHING_MODE
+	data_size     uint64
+	entry_size    uint64
+	total_size    uint64
 }
 
 func (info *RingBufferInfo) GetBufferType() BUFFER_TYPES {
@@ -18,6 +19,10 @@ func (info *RingBufferInfo) GetBufferType() BUFFER_TYPES {
 
 func (info *RingBufferInfo) GetBufferSize() uint64 {
 	return info.buffer_size
+}
+
+func (info *RingBufferInfo) GetBatchingMode() BATCHING_MODE {
+	return info.batching_mode
 }
 
 func (info *RingBufferInfo) GetDataSize() uint64 {

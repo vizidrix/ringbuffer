@@ -16,7 +16,11 @@ type Batch struct {
 	//Size    uint8
 	//PubMask uint8
 
-	Entries []*Entry
+	Entries []*BatchEntry
+}
+
+type BatchEntry struct {
+	Data []byte
 }
 
 type Entry struct {
@@ -47,7 +51,7 @@ func (batch *Batch) String() string {
 	return fmt.Sprintf("%s", batch.Entries)
 }
 
-func (entry *Entry) GetBatchNum() uint64 {
+func (entry *BatchEntry) GetBatchNum() uint64 {
 	if len(entry.Data) < 6 {
 		panic(fmt.Sprintf("Invalid data length: %d", len(entry.Data)))
 	}
@@ -62,7 +66,7 @@ func (entry *Entry) GetBatchNum() uint64 {
 	return batch_num
 }
 
-func (entry *Entry) GetIndex() uint16 {
+func (entry *BatchEntry) GetIndex() uint16 {
 	if len(entry.Data) < 6 {
 		panic(fmt.Sprintf("Invalid data length: %d", len(entry.Data)))
 	}
@@ -73,9 +77,19 @@ func (entry *Entry) GetIndex() uint16 {
 
 // TODO: Add GetBatchIndex
 
-func (entry *Entry) CopyFrom(data []byte) error {
+func (entry *BatchEntry) CopyFrom(data []byte) error {
 	//DebugPrint("Copied to entry: % x", data)
 
+	return nil
+}
+
+func (entry *Entry) Publish() (*PublishToken, error) {
+	return &PublishToken{
+		Published: make(chan struct{}),
+		Failed:    make(chan struct{}),
+	}, nil
+}
+func (entry *Entry) CopyFrom(data []byte) error {
 	return nil
 }
 
