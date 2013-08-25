@@ -22,6 +22,20 @@ uint64_t round_up_pow_2_uint64_t(uint64_t v) {
 	return v;
 }
 
+// cache line
+#define ALIGN 64
+
+void *aligned_malloc(int size) {
+    void *mem = malloc(size+ALIGN+sizeof(void*));
+    void **ptr = (void**)((long)(mem+ALIGN+sizeof(void*)) & ~(ALIGN-1));
+    ptr[-1] = mem;
+    return ptr;
+}
+
+void aligned_free(void *ptr) {
+    free(((void**)ptr)[-1]);
+}
+
 #define BARRIER() { asm volatile("" ::: "memory"); } // Compiler barrier
  
 char debug_out[1000];

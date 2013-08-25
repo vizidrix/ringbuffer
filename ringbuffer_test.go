@@ -21,8 +21,29 @@ type Given_a_size_64_writer_buffer struct {
 	buffer *RingBuffer
 }
 
+type Given_batching_mode_none struct {
+	buffer *RingBuffer
+}
+
 var _ = Suite(&Given_nothing{})
+var _ = Suite(&Given_batching_mode_none{})
 var _ = Suite(&Given_a_size_64_writer_buffer{})
+
+func (g *Given_batching_mode_none) SetUpTest(c *C) {
+	g.buffer, _ = NewRingBuffer(L0, NONE, 6)
+}
+
+func (g *Given_batching_mode_none) TearDownTest(c *C) {
+	g.buffer.Close()
+}
+
+func (g *Given_a_size_64_writer_buffer) SetUpTest(c *C) {
+	g.buffer, _ = NewRingBuffer(L0, LARGE_BATCH, 6)
+}
+
+func (g *Given_a_size_64_writer_buffer) TearDownTest(c *C) {
+	g.buffer.Close()
+}
 
 func (g *Given_nothing) Test_Should_be_able_to_create_a_ring_buffer(c *C) {
 	buffer, _ := NewRingBuffer(L6, LARGE_BATCH, 2)
@@ -33,16 +54,41 @@ func (g *Given_nothing) Test_Should_be_able_to_create_a_ring_buffer(c *C) {
 	c.Assert(info.GetDataSize(), Equals, uint64(2))
 	c.Assert(info.GetEntrySize(), Equals, uint64(8))
 	buffer.Close()
-
-	c.Fail()
 }
 
-func (g *Given_a_size_64_writer_buffer) SetUpTest(c *C) {
-	g.buffer, _ = NewRingBuffer(L0, LARGE_BATCH, 6)
+func (g *Given_batching_mode_none) Test_Should_return_error_if_claim_batch_called_with_multiple(c *C) {
+	_, err := g.buffer.Claim(2)
+
+	if err == nil {
+		c.Fatalf("Batch mode none shouldn't allow multiple claim: %s", err)
+	}
 }
 
-func (g *Given_a_size_64_writer_buffer) TearDownTest(c *C) {
-	g.buffer.Close()
+func (g *Given_batching_mode_none) Test_Should_return_error_if_claim_batch_called_with_zero(c *C) {
+	_, err := g.buffer.Claim(0)
+
+	if err == nil {
+		c.Fatalf("Should not allow claim size zero: %s", err)
+	}
+}
+
+func (g *Given_batching_mode_none) Test_Should_not_return_error_if_claim_batch_called_with_one(c *C) {
+	_, err := g.buffer.Claim(1)
+
+	if err != nil {
+		c.Fatalf("Should allow claim size one for batch mode none: %s", err)
+	}
+}
+
+func (g *Given_batching_mode_none) Test_Should_return_a_batch_instance(c *C) {
+	batch, _ := g.buffer.Claim(1)
+
+	if batch == nil {
+		c.Fatalf("Should have returned a valid batch")
+	}
+	c.Assert(batch.GetBatchNum(), Equals, uint64(0))
+	c.Assert(batch.GetSeqNum(), Equals, uint64(0))
+	c.Assert(batch.GetBatchSize(), Equals, uint16(1))
 }
 
 func (g *Given_a_size_64_writer_buffer) Test_Should_populate_RingBufferInfo(c *C) {
@@ -54,13 +100,58 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_populate_RingBufferInfo(c *C
 	c.Assert(info.GetEntrySize(), Equals, uint64(12))
 }
 
-func (g *Given_a_size_64_writer_buffer) Test_Should_match_position_and_info_when_a_batch_is_claimed(c *C) {
-	EnableDebug()
-	defer DisableDebug()
+func (g *Given_a_size_64_writer_buffer) Test_Should_not_allow_allocation_beyond_max_size(c *C) {
+	_, err := g.buffer.Claim(255)
 
-	batch1, _ := g.buffer.ClaimBatch(1)
-	batch2, _ := g.buffer.ClaimBatch(2)
-	batch3, _ := g.buffer.ClaimBatch(3)
+	if err == nil {
+		c.Fatalf("Claim requested is larger than buffer")
+	}
+}
+
+func (g *Given_a_size_64_writer_buffer) Test_Should_return_error_if_full(c *C) {
+	g.buffer.Claim(63) // Claim nearly all the slots
+
+	_, err := g.buffer.Claim(2)
+
+	if err == nil {
+		c.Fatalf("Buffer should have been full if claim is larger than remaining: %s", err)
+	}
+}
+
+func (g *Given_a_size_64_writer_buffer) Test_Should_return_error_if_buffer_is_too_full_on_last_slot(c *C) {
+	g.buffer.Claim(64) // Claim all the slots
+
+	_, err := g.buffer.Claim(1)
+
+	if err == nil {
+		c.Fatalf("Buffer should have been full if no slots are available: %s", err)
+	}
+}
+
+func (g *Given_a_size_64_writer_buffer) Test_Should_increment_batch_num(c *C) {
+	c.Assert(g.buffer.GetStats().GetBatchNum(), Equals, uint64(1))
+	g.buffer.Claim(1)
+
+	c.Assert(g.buffer.GetStats().GetBatchNum(), Equals, uint64(2))
+}
+
+func (g *Given_a_size_64_writer_buffer) Test_Should_return_seq_num(c *C) {
+	batch, _ := g.buffer.Claim(1)
+
+	if batch == nil {
+		c.Fatalf("Should have returned a valid batch")
+	}
+	//c.Assert(seq_num, Equals, 0)
+}
+
+/*
+func (g *Given_a_size_64_writer_buffer) Test_Should_match_position_and_info_when_a_batch_is_claimed(c *C) {
+	//EnableDebug()
+	//defer DisableDebug()
+
+	batch1, _ := g.buffer.Claim(1)
+	batch2, _ := g.buffer.Claim(2)
+	batch3, _ := g.buffer.Claim(3)
 
 	//log.Printf("Batch1: %s [ % v ]", batch1, batch1)
 	//log.Printf("Batch2: %s [ % v ]", batch2, batch2)
@@ -74,52 +165,7 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_match_position_and_info_when
 	c.Assert(batch2.GetBatchSize(), Equals, uint16(2))
 	c.Assert(batch3.GetBatchSize(), Equals, uint16(3))
 }
-
-func (g *Given_a_size_64_writer_buffer) Test_Should_not_allow_allocation_beyond_max_size(c *C) {
-	_, err := g.buffer.ClaimBatch(255)
-
-	if err == nil {
-		c.Fatalf("Should have raised an error")
-	}
-}
-
-func (g *Given_a_size_64_writer_buffer) Test_Should_block_if_buffer_is_too_full(c *C) {
-	g.buffer.ClaimBatch(63) // Claim nearly all the slots
-
-	finished := make(chan struct{})
-	go func() {
-		g.buffer.ClaimBatch(2)
-		close(finished)
-	}()
-	select {
-	case <-time.After(1 * time.Millisecond):
-		{
-		}
-	case <-finished:
-		{
-			c.Fatalf("Should have blocked waiting for slots")
-		}
-	}
-}
-
-func (g *Given_a_size_64_writer_buffer) Test_Should_block_if_buffer_is_too_full_on_last_slot(c *C) {
-	g.buffer.ClaimBatch(64) // Claim nearly all the slots
-
-	finished := make(chan struct{})
-	go func() {
-		g.buffer.ClaimBatch(1)
-		close(finished)
-	}()
-	select {
-	case <-time.After(1 * time.Millisecond):
-		{
-		}
-	case <-finished:
-		{
-			c.Fatalf("Should have blocked waiting for slots")
-		}
-	}
-}
+*/
 
 /*
 func (g *Given_a_single_writer_buffer) Test_When_a_single_entry_is_published(c *C) {
@@ -214,11 +260,12 @@ func Benchmark_Logic(b *testing.B) {
 	//var batch *Batch
 	//buffer, _ := NewRingBuffer(SINGLE_WRITER, 16, 10)
 	//defer buffer.Close()
+	log.Printf("Bench: %d", b.N)
 	for i := 0; i < b.N; i++ {
 		buffer, _ := NewRingBuffer(L0, LARGE_BATCH, 2)
 
-		batch, _ := buffer.ClaimBatch(1)
-		buffer.CancelBatch(batch)
+		batch, _ := buffer.Claim(1)
+		batch.Cancel()
 		//batch, _ = buffer.Claim(1)
 		//batch.Entries[0].CopyFrom(data)
 		//batch.Publish()
@@ -230,24 +277,12 @@ func Benchmark_Logic(b *testing.B) {
 func Benchmark_Claim_and_cancel(b *testing.B) {
 	log.Printf("Bench: %d", b.N)
 	buffer, _ := NewRingBuffer(L12, LARGE_BATCH, 2)
-	for i := 0; i < b.N; i++ {
-		batch, _ := buffer.ClaimBatch(1)
-		buffer.CancelBatch(batch)
-	}
-	buffer.Close()
-}
-
-/*
-func Benchmark_Claim_and_cancel_2(b *testing.B) {
-	log.Printf("Bench: %d", b.N)
-	buffer, _ := NewRingBuffer(L12, 2)
+	defer buffer.Close()
 	for i := 0; i < b.N; i++ {
 		batch, _ := buffer.Claim(1)
-		buffer.CancelBatch(batch)
+		batch.Cancel()
 	}
-	buffer.Close()
 }
-*/
 
 // go test -c
 // ./eventstore.test -test.bench=.benchname -test.cpuprofile=cpu.out

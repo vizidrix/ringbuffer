@@ -71,64 +71,104 @@ func (buffer *RingBuffer) GetInfo() *RingBufferInfo {
 	return (*RingBufferInfo)(unsafe.Pointer(info_ptr))
 }
 
+func (buffer *RingBuffer) GetStats() *RingBufferStats {
+	stats_ptr := C.rb_get_stats(buffer.buffer_ptr)
+	return (*RingBufferStats)(unsafe.Pointer(stats_ptr))
+}
+
 func (buffer *RingBuffer) PublishRaw(data []byte) (*PublishToken, error) {
-	entry, err := buffer.Claim() //(1)
+	batch, err := buffer.Claim(1) //(1)
 	if err != nil {
 		return nil, err
 	}
-	entry.CopyFrom(data)
+	batch.GetEntryAt(0).CopyFrom(data)
 	//batch.Entries[0].CopyFrom(data)
 	//token, err := batch.Publish()
-	token, err := entry.Publish()
+	token, err := batch.Publish()
 	if err != nil {
 		return nil, err
 	}
 	return token, nil
 }
 
-func (buffer *RingBuffer) Claim() (*Entry, error) {
-	return nil, nil
-}
-
-func (buffer *RingBuffer) ClaimBatch(count uint16) (*Batch, error) {
+func (buffer *RingBuffer) Claim(count uint16) (RingBufferBatchWriter, error) {
 	//var batch_ptr unsafe.Pointer //unsafe.Pointer // = unsafe.Pointer(&count) //**[0]byte
 	//ptr := &struct{}{}
 	//batch_ptr := unsafe.Pointer(ptr)
-	batch := &Batch{}
-	batch_ptr := unsafe.Pointer(batch) //*new(unsafe.Pointer)
+	//batch := &Batch{}
+	//var batch *Batch = &Batch{}
+	//batch_ptr := unsafe.Pointer(batch) //*new(unsafe.Pointer)
 	//log.Printf("batch_ptr: %s", batch_ptr)
 	//var batch_ptr *[0]byte
 	//result := 0
 	//batch_ptr := unsafe.Pointer(batch_addr)
-	result := C.rb_claim_batch(buffer.buffer_ptr, &batch_ptr, C.uint16_t(count))
-	if result != 0 {
-		return nil, errors.New(fmt.Sprintf("Error: %d", result))
+	//var batch_ptr *C.uint64_t
+	seq_num, err := C.rb_claim(buffer.buffer_ptr, C.uint16_t(count))
+	//log.Printf("err: %s", err)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("Error: %d", seq_num))
 	}
 
-	/* This section works!! */
-	/*
-		batch := *(*[]*byte)(unsafe.Pointer(&reflect.SliceHeader{
-			Data: uintptr(batch_ptr),
-			Len:  int(count),
-			Cap:  int(count),
-		}))
-		log.Printf("Batch: %s", ((*Batch)(unsafe.Pointer(&batch))))
-
-		//log.Printf("Len: %d", len(batch))
-		//log.Printf("Entry size: %d", int(buffer.GetInfo().entry_size))
-		//log.Printf("Batch: %s", batch[:])
-		for i := 0; i < int(count); i++ {
-			//log.Printf("Batch[%d]: %s", i, batch[i])
-			entry := *(*Entry)(unsafe.Pointer(&reflect.SliceHeader{
-				Data: uintptr(unsafe.Pointer(batch[i])),
-				Len:  int(buffer.GetInfo().entry_size),
-				Cap:  int(buffer.GetInfo().entry_size),
-			}))
-			log.Printf("Entry[%d]: %v", i, entry.Data[:])
+	switch buffer.GetInfo().GetBatchingMode() {
+	case NONE:
+		{
+			//log.Printf("Batching mode NONE")
+			return buffer.NewSingleEntryBatch(uint64(seq_num)), nil
 		}
-	*/
+	case SMALL_BATCH:
+		{
+			//log.Printf("Batching mode SMALL BATCH")
+			return buffer.NewMultiEntryBatch(SMALL_BATCH, uint64(seq_num)), nil
+		}
+	case LARGE_BATCH:
+		{
+			//log.Printf("Batching mode LARGE BATCH")
+			return buffer.NewMultiEntryBatch(LARGE_BATCH, uint64(seq_num)), nil
+		}
+	}
 
-	//var temp *Batch = (*Batch)(unsafe.Pointer(&reflect.SliceHeader{
+	return nil, errors.New("Unable to find batch type")
+}
+
+func (buffer *RingBuffer) Cancel(batch RingBufferBatchWriter) error {
+	//C.rb_cancel_batch(buffer.buffer_ptr, (*[0]byte)(unsafe.Pointer(batch)), C.uint16_t(len(batch.Entries)))
+	C.rb_cancel(buffer.buffer_ptr, C.uint64_t(batch.GetSeqNum()), C.uint16_t(batch.GetBatchSize()))
+
+	return nil
+}
+
+func (buffer *RingBuffer) Publish(batch RingBufferBatchWriter) error {
+	//C.rb_publish_batch(buffer.buffer_ptr, (*[0]byte)(unsafe.Pointer(batch)), C.uint16_t(len(batch.Entries)))
+	C.rb_publish(buffer.buffer_ptr, C.uint64_t(batch.GetSeqNum()), C.uint16_t(batch.GetBatchSize()))
+
+	return nil
+}
+
+/* This section works!! */
+/*
+	batch := *(*[]*byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: uintptr(batch_ptr),
+		Len:  int(count),
+		Cap:  int(count),
+	}))
+	log.Printf("Batch: %s", ((*Batch)(unsafe.Pointer(&batch))))
+
+	//log.Printf("Len: %d", len(batch))
+	//log.Printf("Entry size: %d", int(buffer.GetInfo().entry_size))
+	//log.Printf("Batch: %s", batch[:])
+	for i := 0; i < int(count); i++ {
+		//log.Printf("Batch[%d]: %s", i, batch[i])
+		entry := *(*Entry)(unsafe.Pointer(&reflect.SliceHeader{
+			Data: uintptr(unsafe.Pointer(batch[i])),
+			Len:  int(buffer.GetInfo().entry_size),
+			Cap:  int(buffer.GetInfo().entry_size),
+		}))
+		log.Printf("Entry[%d]: %v", i, entry.Data[:])
+	}
+*/
+
+//var temp *Batch = (*Batch)(unsafe.Pointer(&reflect.SliceHeader{
+/*
 	batch = (*Batch)(unsafe.Pointer(&reflect.SliceHeader{
 		Data: uintptr(batch_ptr),
 		Len:  int(count),
@@ -142,31 +182,9 @@ func (buffer *RingBuffer) ClaimBatch(count uint16) (*Batch, error) {
 		}))
 		//log.Printf("Batch Entry[%d]: %v", i, batch.Entries[i].Data[:])
 	}
-	//log.Printf("Batch: %s", batch)
-	return batch, nil
-}
-
-func (buffer *RingBuffer) Cancel(entry *Entry) error {
-	return nil
-}
-
-func (buffer *RingBuffer) Publish(entry *Entry) error {
-	return nil
-}
-
-func (buffer *RingBuffer) CancelBatch(batch *Batch) error {
-	//C.rb_cancel_batch(buffer.buffer_ptr, (*[0]byte)(unsafe.Pointer(batch)), C.uint16_t(len(batch.Entries)))
-	C.rb_cancel_batch(buffer.buffer_ptr, unsafe.Pointer(batch), C.uint16_t(len(batch.Entries)))
-
-	return nil
-}
-
-func (buffer *RingBuffer) PublishBatch(batch *Batch) error {
-	//C.rb_publish_batch(buffer.buffer_ptr, (*[0]byte)(unsafe.Pointer(batch)), C.uint16_t(len(batch.Entries)))
-	C.rb_publish_batch(buffer.buffer_ptr, unsafe.Pointer(batch), C.uint16_t(len(batch.Entries)))
-
-	return nil
-}
+*/
+//log.Printf("Batch: %s", batch)
+//return batch, nil
 
 var debugEnabled bool = true
 

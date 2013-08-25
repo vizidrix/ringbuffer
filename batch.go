@@ -9,6 +9,23 @@ import (
 	"unsafe"
 )
 
+type RingBufferBatchWriter interface {
+	GetBatchNum() uint64
+	GetSeqNum() uint64
+	GetBatchSize() uint16
+	GetEntryAt(index uint16) RingBufferEntryWriter
+	Publish() (*PublishToken, error)
+	Cancel() error
+}
+
+type RingBufferEntryWriter interface {
+	GetBuffer() []byte
+	CopyFrom(source []byte)
+}
+
+// C.GoBytes(unsafe.Pointer, C.int) []byte
+
+// Needs to know what batching mode is enabled
 type Batch struct {
 	//Info     *RingBufferInfo
 	//BatchNum uint64
@@ -16,7 +33,11 @@ type Batch struct {
 	//Size    uint8
 	//PubMask uint8
 
-	Entries []*BatchEntry
+	//Entries []*BatchEntry
+	Buffer   *RingBuffer
+	BatchNum uint64
+	SeqNum   uint64
+	Size     uint16
 }
 
 type BatchEntry struct {
@@ -27,6 +48,7 @@ type Entry struct {
 	Data []byte
 }
 
+/*
 func (batch *Batch) GetBatchNum() uint64 {
 	return batch.Entries[0].GetBatchNum()
 }
@@ -92,6 +114,7 @@ func (entry *Entry) Publish() (*PublishToken, error) {
 func (entry *Entry) CopyFrom(data []byte) error {
 	return nil
 }
+*/
 
 func batch_ignore() {
 	log.Println(fmt.Sprintf("", 10))

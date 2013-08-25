@@ -32,15 +32,31 @@ typedef enum {
 typedef struct rb_buffer_info {
 	uint8_t			buffer_type;	/** < Determines number of slots as specified in rb_buffer_size_t enum */
 	uint64_t		buffer_size;	/** < Number of slots allocated per the rules above */
+	uint64_t		size_mask;		/** < Buffer size - 1; Used to maintain scope of buffer */
 	uint8_t			batching_mode;  /** < Sets rules for entry header [ NONE: 0 | SMALL: 5 bytes | LARGE: 6 bytes ] */
 	uint64_t		data_size;		/** < Number of bytes of data for each slot */
 	uint64_t		entry_size;		/** < DATA_HEADER_SIZE + data_size */
 	uint64_t		total_size;		/** < Total number of bytes allocated to the buffer */
 } rb_buffer_info;
 
+typedef struct rb_buffer_stats {
+	volatile uint64_t	read_seq_num;	/** < Index of the latest entry released for consumption */
+	volatile uint64_t	read_barrier;	/** < Index of the oldest entry released for consumption but still in use by at least one reader */
+	volatile uint64_t	write_seq_num;	/** < Index of the latest entry released for production */
+	volatile uint64_t	write_barrier;	/** < Index of the oldest entry released for production but still in use by a writer */
+	volatile uint64_t	batch_num;		/** < Index of the last batch allocated to a producer */
+	volatile uint64_t	__padding[3];	// 64 bytes - 40 byte struct = 3 * 8 bytes
+} rb_buffer_stats;
+
+//struct rb_buffer {
+//	rb_buffer_info *	info;			/** < Holds buffer settings */
+//  rb_buffer_stats *	stats;
+//	uint8_t *			data_buffer;
+//};
+
 //typedef struct rb_barrier rb_barrier;
 
-typedef struct rb_batch rb_batch;
+//typedef struct rb_batch rb_batch;
 
 typedef struct rb_buffer rb_buffer;
 
@@ -55,14 +71,13 @@ data_size: 		Number of bytes to allocate per entry
 */
 extern int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_size, rb_batching_mode_t batching_mode, uint64_t data_size);
 extern int rb_release_buffer(rb_buffer * buffer);
-extern int rb_claim(rb_buffer * buffer, void ** entry);
-extern int rb_cancel(rb_buffer * buffer, void * entry);
-extern int rb_publish(rb_buffer * buffer, void * entry);
-extern int rb_claim_batch(rb_buffer * buffer, void ** batch, uint16_t count);
-extern int rb_cancel_batch(rb_buffer * buffer, void * batch, uint16_t count);
-extern int rb_publish_batch(rb_buffer * buffer, void * batch, uint16_t count);
+
+extern uint64_t rb_claim(rb_buffer * buffer, uint16_t count);
+extern int rb_cancel(rb_buffer * buffer, uint64_t seq_num, uint16_t count);// Zero out all data
+extern int rb_publish(rb_buffer * buffer, uint64_t seq_num, uint16_t count);
 
 extern rb_buffer_info * rb_get_info(rb_buffer * buffer);
+extern rb_buffer_stats * rb_get_stats(rb_buffer * buffer);
 
 
 #ifdef __extern_golang

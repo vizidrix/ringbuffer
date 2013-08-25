@@ -7,6 +7,7 @@ import (
 type RingBufferInfo struct {
 	buffer_type   uint8
 	buffer_size   uint64
+	size_mask     uint64
 	batching_mode BATCHING_MODE
 	data_size     uint64
 	entry_size    uint64
