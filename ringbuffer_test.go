@@ -13,6 +13,15 @@ import (
 	"unsafe"
 )
 
+func GetData(size uint16) []byte {
+	isize := int(size)
+	data := make([]byte, isize)
+	for i := 0; i < isize; i++ {
+		data[i] = byte((isize - i) & 0xFF)
+	}
+	return data
+}
+
 func Test(t *testing.T) { TestingT(t) }
 
 type Given_nothing struct{}
@@ -91,6 +100,31 @@ func (g *Given_batching_mode_none) Test_Should_return_a_batch_instance(c *C) {
 	c.Assert(batch.GetBatchSize(), Equals, uint16(1))
 }
 
+func (g *Given_batching_mode_none) Test_Should_be_able_to_write_to_and_verify_single_entry_batch(c *C) {
+	batch, _ := g.buffer.Claim(1)
+	batch.Entry(0).CopyFrom(GetData(10))
+	buffer := batch.Entry(0).GetBuffer()
+
+	c.Assert(buffer[0], Equals, uint8(10))
+	c.Assert(buffer[4], Equals, uint8(6))
+}
+
+func (g *Given_batching_mode_none) Test_Should_not_overlap_multiple_buffers(c *C) {
+	batch1, _ := g.buffer.Claim(1)
+	batch1.Entry(0).CopyFrom(GetData(10))
+	batch2, _ := g.buffer.Claim(1)
+	batch2.Entry(0).CopyFrom(GetData(20))
+
+	buffer1 := batch1.Entry(0).GetBuffer()
+	buffer2 := batch2.Entry(0).GetBuffer()
+
+	for i := 0; i < len(buffer1); i++ {
+		if buffer1[i] == buffer2[i] {
+			c.Fail()
+		}
+	}
+}
+
 func (g *Given_a_size_64_writer_buffer) Test_Should_populate_RingBufferInfo(c *C) {
 	info := g.buffer.GetInfo()
 
@@ -129,10 +163,10 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_return_error_if_buffer_is_to
 }
 
 func (g *Given_a_size_64_writer_buffer) Test_Should_increment_batch_num(c *C) {
-	c.Assert(g.buffer.GetStats().GetBatchNum(), Equals, uint64(1))
+	c.Assert(g.buffer.GetStats().GetBatchNum(), Equals, uint64(0))
 	g.buffer.Claim(1)
 
-	c.Assert(g.buffer.GetStats().GetBatchNum(), Equals, uint64(2))
+	c.Assert(g.buffer.GetStats().GetBatchNum(), Equals, uint64(1))
 }
 
 func (g *Given_a_size_64_writer_buffer) Test_Should_return_seq_num(c *C) {

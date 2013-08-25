@@ -22,6 +22,10 @@ func (info *RingBufferInfo) GetBufferSize() uint64 {
 	return info.buffer_size
 }
 
+func (info *RingBufferInfo) GetSizeMask() uint64 {
+	return info.size_mask
+}
+
 func (info *RingBufferInfo) GetBatchingMode() BATCHING_MODE {
 	return info.batching_mode
 }

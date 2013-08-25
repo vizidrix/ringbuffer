@@ -32,11 +32,11 @@ func (batch *MultiEntryBatch) GetBatchSize() uint16 {
 	return 1
 }
 
-func (batch *MultiEntryBatch) GetEntryAt(index uint16) RingBufferEntryWriter {
+func (batch *MultiEntryBatch) Entry(index uint64) RingBufferEntryWriter {
 	if index != 1 {
 		panic("Invalid index into single entry batch")
 	}
-	return &SingleEntry{
+	return &MultiEntry{
 		Data: nil, //batch.Buffer.GetEntryAt(batch.SeqNum),
 	}
 }

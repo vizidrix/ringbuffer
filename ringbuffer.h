@@ -73,6 +73,9 @@ extern int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_size, rb_batchi
 extern int rb_release_buffer(rb_buffer * buffer);
 
 extern uint64_t rb_claim(rb_buffer * buffer, uint16_t count);
+
+extern void * rb_get_entry(rb_buffer * buffer, uint64_t seq_num);
+
 extern int rb_cancel(rb_buffer * buffer, uint64_t seq_num, uint16_t count);// Zero out all data
 extern int rb_publish(rb_buffer * buffer, uint64_t seq_num, uint16_t count);
 

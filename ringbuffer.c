@@ -82,7 +82,7 @@ int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_type, rb_batching_mode
 	(*buffer_ptr)->stats->read_barrier = 0;
 	(*buffer_ptr)->stats->write_seq_num = 0;
 	(*buffer_ptr)->stats->write_barrier = 0;
-	(*buffer_ptr)->stats->batch_num = 1;
+	(*buffer_ptr)->stats->batch_num = 0;
 	
 	// Allocate giant contiguous byte array to hold the entries
 	//DebugPrint("Allocating data_buffer: %d * (%d * 32) = %d", buffer_size, chunk_count, buffer_size * (chunk_count << 5));
@@ -115,10 +115,8 @@ rb_claim and rb_publish are NOT thread safe and must somehow be
 fanned in for scenarios other than single producer
 
 654 ns/op Buffer(L12, 2)
-
+314 ns/op Buffer(L12, 2)
 */
-unsigned long const MILLISECOND = 1000000L;
-unsigned long const MICROSECOND = 1000L;
 
 rb_print_buffer(rb_buffer * buffer) {
 	DebugPrint("buffer_type: %d", buffer->info->buffer_type);
@@ -157,39 +155,9 @@ uint64_t rb_claim(rb_buffer * buffer, uint16_t count) {
 		goto error;
 	}
 	
-	// Pass back the seq num
+	// Copy the seq_num before it gets modified
 	uint64_t seq_num = buffer->stats->write_seq_num;
-	//seq_num = &iseq_num;//buffer->write_seq_num;//&buffer->data_buffer[buffer->write_seq_num];
-	/*
-	int i = 0;
-	// Seek to the first entry in the batch
-	int index = buffer->info->entry_size * (buffer->write_seq_num + i);
-	for(i = 0; i < count; i++) {
-		//buffer->data_buffer[index];
-		buffer->data_buffer[index+0] = (buffer->batch_num >> 24) & 0xFF;
-		buffer->data_buffer[index+1] = (buffer->batch_num >> 16) & 0xFF;
-		buffer->data_buffer[index+2] = (buffer->batch_num >> 8) & 0xFF;
-		buffer->data_buffer[index+3] = buffer->batch_num & 0xFF;
-		// TODO: Change this switch to a macro?
-		switch(buffer->info->batching_mode) {
-			case SMALL_BATCH: {
-				buffer->data_buffer[index+4] = i & 0xFF;
-				break;
-			}
-			case LARGE_BATCH: {
-				buffer->data_buffer[index+4] = (i >> 8) & 0xFF;
-				buffer->data_buffer[index+5] = i & 0xFF;
-				break;
-			}
-		}
-		index = (index + buffer->info->entry_size) & buffer->size_mask;
-	}
-
-	buffer->batch_num++;
-	buffer->write_seq_num += count;
-
-	return 0;
-	*/
+	
 	buffer->stats->batch_num++;
 	buffer->stats->write_seq_num += count;
 
@@ -200,10 +168,18 @@ uint64_t rb_claim(rb_buffer * buffer, uint16_t count) {
 		return 0;
 }
 
+void * rb_get_entry(rb_buffer * buffer, uint64_t seq_num) {
+	uint64_t index = seq_num & buffer->info->size_mask;
+	//DebugPrint("seq_num & mask -> index: %d & %d -> %d", seq_num, buffer->info->size_mask, index);
+	return &buffer->data_buffer[index];
+	//return &buffer->data_buffer[seq_num & buffer->info->size_mask];
+}
+
 int rb_cancel(rb_buffer * buffer, uint64_t seq_num, uint16_t count) {
 	//DebugPrint("Canceling batch");
 	//free(batch->data_buffer);
 	//free(batch);
+	// TODO: Need to move write buffer
 
 	return 0;
 }
@@ -231,6 +207,42 @@ rb_buffer_stats * rb_get_stats(rb_buffer * buffer) {
 	return buffer->stats;
 }
 
+
+
+
+//seq_num = &iseq_num;//buffer->write_seq_num;//&buffer->data_buffer[buffer->write_seq_num];
+	/*
+	int i = 0;
+	// Seek to the first entry in the batch
+	int index = buffer->info->entry_size * (buffer->write_seq_num + i);
+	for(i = 0; i < count; i++) {
+		//buffer->data_buffer[index];
+		buffer->data_buffer[index+0] = (buffer->batch_num >> 24) & 0xFF;
+		buffer->data_buffer[index+1] = (buffer->batch_num >> 16) & 0xFF;
+		buffer->data_buffer[index+2] = (buffer->batch_num >> 8) & 0xFF;
+		buffer->data_buffer[index+3] = buffer->batch_num & 0xFF;
+		// TODO: Change this switch to a macro?
+		switch(buffer->info->batching_mode) {
+			case SMALL_BATCH: {
+				buffer->data_buffer[index+4] = i & 0xFF;
+				break;
+			}
+			case LARGE_BATCH: {
+				buffer->data_buffer[index+4] = (i >> 8) & 0xFF;
+				buffer->data_buffer[index+5] = i & 0xFF;
+				break;
+			}
+		}
+		index = (index + buffer->info->entry_size) & buffer->size_mask;
+	}
+	*/
+
+
+
+
+
+//unsigned long const MILLISECOND = 1000000L;
+//unsigned long const MICROSECOND = 1000L;
 
 
 //struct rb_barrier {

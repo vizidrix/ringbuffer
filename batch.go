@@ -13,14 +13,14 @@ type RingBufferBatchWriter interface {
 	GetBatchNum() uint64
 	GetSeqNum() uint64
 	GetBatchSize() uint16
-	GetEntryAt(index uint16) RingBufferEntryWriter
+	Entry(index uint64) RingBufferEntryWriter
 	Publish() (*PublishToken, error)
 	Cancel() error
 }
 
 type RingBufferEntryWriter interface {
-	GetBuffer() []byte
-	CopyFrom(source []byte)
+	GetBuffer() []byte      // Zero copy option
+	CopyFrom(source []byte) // Standard mem copy option
 }
 
 // C.GoBytes(unsafe.Pointer, C.int) []byte

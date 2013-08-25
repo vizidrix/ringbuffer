@@ -81,7 +81,7 @@ func (buffer *RingBuffer) PublishRaw(data []byte) (*PublishToken, error) {
 	if err != nil {
 		return nil, err
 	}
-	batch.GetEntryAt(0).CopyFrom(data)
+	batch.Entry(0).CopyFrom(data)
 	//batch.Entries[0].CopyFrom(data)
 	//token, err := batch.Publish()
 	token, err := batch.Publish()
@@ -128,6 +128,20 @@ func (buffer *RingBuffer) Claim(count uint16) (RingBufferBatchWriter, error) {
 	}
 
 	return nil, errors.New("Unable to find batch type")
+}
+
+func (buffer *RingBuffer) Entry(seq_num uint64) []byte {
+	ptr := C.rb_get_entry(buffer.buffer_ptr, C.uint64_t(seq_num))
+	//log.Printf("ptr: %v - seq: %d", ptr, seq_num)
+	//size := C.int(buffer.GetInfo().GetEntrySize())
+	size := int(buffer.GetInfo().GetEntrySize())
+	data := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: uintptr(unsafe.Pointer(ptr)),
+		Len:  size,
+		Cap:  size,
+	}))
+	return data
+	//return C.GoBytes(ptr, size)
 }
 
 func (buffer *RingBuffer) Cancel(batch RingBufferBatchWriter) error {
