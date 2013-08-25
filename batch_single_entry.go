@@ -2,6 +2,7 @@ package ringbuffer
 
 import (
 	"log"
+	//"unsafe"
 )
 
 type SingleEntryBatch struct {
@@ -14,7 +15,6 @@ type SingleEntry struct {
 }
 
 func (buffer *RingBuffer) NewSingleEntryBatch(seq_num uint64) RingBufferBatchWriter {
-	//log.Printf("Batch seq_num: %d", seq_num)
 	return &SingleEntryBatch{
 		Buffer: buffer,
 		SeqNum: seq_num,
@@ -33,17 +33,23 @@ func (batch *SingleEntryBatch) GetBatchSize() uint16 {
 	return 1
 }
 
-func (batch *SingleEntryBatch) Entry(index uint64) RingBufferEntryWriter {
-	//if seq_num&batch.Buffer.GetInfo().GetSizeMask() != 0 {
+func (batch *SingleEntryBatch) Entry(index uint64) []byte {
 	if index != 0 {
 		panic("Invalid index into single entry batch")
 	}
-	seq_num := batch.SeqNum + index
-	buffer := batch.Buffer.Entry(seq_num)
-	//DebugPrint("buffer: %v", buffer)
-	return &SingleEntry{
-		data: buffer,
+	return batch.Buffer.Entry(batch.SeqNum + index)
+	//return (*SingleEntry)()
+	//buffer := batch.Buffer.Entry(batch.SeqNum + index)
+	//return &SingleEntry{
+	//	data: buffer,
+	//}
+}
+
+func (batch *SingleEntryBatch) CopyTo(index uint64, data []byte) {
+	if index != 0 {
+		panic("Invalid index into single entry batch")
 	}
+	copy(batch.Buffer.Entry(batch.SeqNum + index)[0:], data[:])
 }
 
 func (batch *SingleEntryBatch) Publish() (*PublishToken, error) {
@@ -56,16 +62,15 @@ func (batch *SingleEntryBatch) Cancel() error {
 	return batch.Buffer.Cancel(batch)
 }
 
+/*
 func (entry *SingleEntry) GetBuffer() []byte {
 	return entry.data
 }
 
 func (entry *SingleEntry) CopyFrom(source []byte) {
-	//log.Printf("CopyFrom: %v", source)
-	//log.Printf("b-Data: %v", entry.data[0:])
 	copy(entry.data[0:], source[:])
-	//log.Printf("a-Data: %v", entry.data[0:])
 }
+*/
 
 func batch_single_entry_ignore() {
 	log.Printf("")

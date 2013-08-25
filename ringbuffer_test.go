@@ -98,12 +98,25 @@ func (g *Given_batching_mode_none) Test_Should_return_a_batch_instance(c *C) {
 	c.Assert(batch.GetBatchNum(), Equals, uint64(0))
 	c.Assert(batch.GetSeqNum(), Equals, uint64(0))
 	c.Assert(batch.GetBatchSize(), Equals, uint16(1))
+	// *******
+
+	//temp := make([]byte, 10, 20)
+	temp := reflect.SliceHeader{
+		Data: uintptr(10),
+		Len:  10,
+		Cap:  20,
+	}
+	temp.Data = 30
+
+	log.Printf("temp: %x - %v - %s", temp, temp, temp)
+	//c.Fail()
 }
 
 func (g *Given_batching_mode_none) Test_Should_be_able_to_write_to_and_verify_single_entry_batch(c *C) {
 	batch, _ := g.buffer.Claim(1)
-	batch.Entry(0).CopyFrom(GetData(10))
-	buffer := batch.Entry(0).GetBuffer()
+	batch.CopyTo(0, GetData(10))
+	//batch.Entry(0).CopyFrom(GetData(10))
+	buffer := batch.Entry(0)
 
 	c.Assert(buffer[0], Equals, uint8(10))
 	c.Assert(buffer[4], Equals, uint8(6))
@@ -111,18 +124,38 @@ func (g *Given_batching_mode_none) Test_Should_be_able_to_write_to_and_verify_si
 
 func (g *Given_batching_mode_none) Test_Should_not_overlap_multiple_buffers(c *C) {
 	batch1, _ := g.buffer.Claim(1)
-	batch1.Entry(0).CopyFrom(GetData(10))
+	batch1.CopyTo(0, GetData(10))
 	batch2, _ := g.buffer.Claim(1)
-	batch2.Entry(0).CopyFrom(GetData(20))
+	batch2.CopyTo(0, GetData(20))
 
-	buffer1 := batch1.Entry(0).GetBuffer()
-	buffer2 := batch2.Entry(0).GetBuffer()
+	buffer1 := batch1.Entry(0)
+	buffer2 := batch2.Entry(0)
 
 	for i := 0; i < len(buffer1); i++ {
 		if buffer1[i] == buffer2[i] {
 			c.Fail()
 		}
 	}
+}
+
+func (g *Given_batching_mode_none) Test_Should_not_overlap_multiple_buffers_interleaved(c *C) {
+	batch1, _ := g.buffer.Claim(1)
+	buffer1 := batch1.Entry(0)
+	batch1.CopyTo(0, GetData(10))
+
+	batch2, _ := g.buffer.Claim(1)
+	buffer2 := batch2.Entry(0)
+	batch2.CopyTo(0, GetData(20))
+
+	for i := 0; i < len(buffer1); i++ {
+		if buffer1[i] == buffer2[i] {
+			c.Fail()
+		}
+	}
+	c.Assert(buffer1[0], Equals, uint8(10))
+	c.Assert(buffer2[0], Equals, uint8(20))
+	c.Assert(batch1.Entry(0)[0], Equals, uint8(10))
+	c.Assert(batch2.Entry(0)[0], Equals, uint8(20))
 }
 
 func (g *Given_a_size_64_writer_buffer) Test_Should_populate_RingBufferInfo(c *C) {
@@ -175,77 +208,10 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_return_seq_num(c *C) {
 	if batch == nil {
 		c.Fatalf("Should have returned a valid batch")
 	}
-	//c.Assert(seq_num, Equals, 0)
+	//c.Fail()
 }
 
 /*
-func (g *Given_a_size_64_writer_buffer) Test_Should_match_position_and_info_when_a_batch_is_claimed(c *C) {
-	//EnableDebug()
-	//defer DisableDebug()
-
-	batch1, _ := g.buffer.Claim(1)
-	batch2, _ := g.buffer.Claim(2)
-	batch3, _ := g.buffer.Claim(3)
-
-	//log.Printf("Batch1: %s [ % v ]", batch1, batch1)
-	//log.Printf("Batch2: %s [ % v ]", batch2, batch2)
-	//log.Printf("Batch3: %s [ % v ]", batch3, batch3)
-
-	c.Assert(batch1.GetBatchNum(), Equals, uint64(1))
-	c.Assert(batch2.GetBatchNum(), Equals, uint64(2))
-	c.Assert(batch3.GetBatchNum(), Equals, uint64(3))
-
-	c.Assert(batch1.GetBatchSize(), Equals, uint16(1))
-	c.Assert(batch2.GetBatchSize(), Equals, uint16(2))
-	c.Assert(batch3.GetBatchSize(), Equals, uint16(3))
-}
-*/
-
-/*
-func (g *Given_a_single_writer_buffer) Test_When_a_single_entry_is_published(c *C) {
-	data := make([]byte, 10)
-	token, _ := g.buffer.Publish(data)
-
-	select {
-	case count := <-token.Published:
-		{
-			c.Errorf("Batch published: %d", count)
-		}
-	case err := <-token.Failed:
-		{
-			c.Errorf("Error in publish token: %s", err)
-		}
-	case <-time.After(10 * time.Millisecond):
-		{
-			c.Errorf("Publish timed out")
-		}
-	}
-}
-
-func (g *Given_a_single_writer_buffer) Test_When_a_sequence_is_published(c *C) { // Test_Should_upate_seq_num_when_entry_is_published(c *C) {
-	//func Test_Should_upate_seq_num_when_entry_is_published(t *testing.T) {
-	data := make([]byte, 10)
-	batch, _ := g.buffer.Claim(1)
-	batch.Entries[0].CopyFrom(data)
-	token, _ := batch.Publish()
-
-	select {
-	case count := <-token.Published:
-		{
-			c.Errorf("Batch published: %d", count)
-		}
-	case err := <-token.Failed:
-		{
-			c.Errorf("Error in publish token: %s", err)
-		}
-	case <-time.After(10 * time.Millisecond):
-		{
-			c.Errorf("Publish timed out")
-		}
-	}
-
-	//c.Assert("a", Equals, "b")
-}
 
 func (g *Given_a_single_writer_buffer) Test_Should_init_ring_buffer(c *C) {
 	//func Test_Should_init_ring_buffer(t *testing.T) {
@@ -299,6 +265,12 @@ func Benchmark_Logic(b *testing.B) {
 		buffer, _ := NewRingBuffer(L0, LARGE_BATCH, 2)
 
 		batch, _ := buffer.Claim(1)
+		//batch.Entry(0).CopyFrom(GetData(10))
+		//batch.CopyTo(0, )
+		data := batch.Entry(0)
+		if data[0] != uint8(10) {
+			b.Fail()
+		}
 		batch.Cancel()
 		//batch, _ = buffer.Claim(1)
 		//batch.Entries[0].CopyFrom(data)
@@ -310,22 +282,29 @@ func Benchmark_Logic(b *testing.B) {
 
 func Benchmark_Claim_and_cancel(b *testing.B) {
 	log.Printf("Bench: %d", b.N)
-	buffer, _ := NewRingBuffer(L12, LARGE_BATCH, 2)
+	//buffer, _ := NewRingBuffer(L12, LARGE_BATCH, 2)
+	buffer, _ := NewRingBuffer(L10, NONE, 64)
+	data := GetData(10)
+	//batch, _ := buffer.Claim(1)
 	defer buffer.Close()
 	for i := 0; i < b.N; i++ {
+		//buffer.Claim(1) // 344 ns/op
+
 		batch, _ := buffer.Claim(1)
-		batch.Cancel()
+		entry := batch.Entry(0)
+		//batch.Entry(0)
+		//data := batch.Entry(0)
+
+		batch.CopyTo(0, data)
+		entry[0] = 99
+
+		//data := batch.Entry(0).GetBuffer()
+		//if data[0] != uint8(10) {
+		//	b.Fail()
+		//}
+		//batch.Cancel()
 	}
 }
-
-// go test -c
-// ./eventstore.test -test.bench=.benchname -test.cpuprofile=cpu.out
-// ./eventstore.test -test.v -test.fun xxx -test.cpuprofile=cpu.out -test.memprofile=mem.out -test.bench=.Bench_name
-// go tool pprof eventstore.test cpu.out
-
-// go test github.com/vizidrix/eventstore -bench .Trim -benchmem
-
-// go test github.com/vizidrx/ringbuffer -gocheck.v
 
 func ring_buffer_test_ignore() {
 	log.Println(fmt.Sprintf("", 10))

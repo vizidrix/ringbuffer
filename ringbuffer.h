@@ -48,16 +48,6 @@ typedef struct rb_buffer_stats {
 	volatile uint64_t	__padding[3];	// 64 bytes - 40 byte struct = 3 * 8 bytes
 } rb_buffer_stats;
 
-//struct rb_buffer {
-//	rb_buffer_info *	info;			/** < Holds buffer settings */
-//  rb_buffer_stats *	stats;
-//	uint8_t *			data_buffer;
-//};
-
-//typedef struct rb_barrier rb_barrier;
-
-//typedef struct rb_batch rb_batch;
-
 typedef struct rb_buffer rb_buffer;
 
 /*
