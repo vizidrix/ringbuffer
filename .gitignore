@@ -2,6 +2,10 @@
 *.o
 *.a
 *.so
+*.gch
+
+# Mac files
+.DS_Store
 
 # Folders
 _obj
