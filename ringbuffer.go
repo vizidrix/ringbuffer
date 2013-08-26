@@ -8,40 +8,47 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	//"os"
 	"reflect"
 	"strings"
 	"unsafe"
 )
 
 type BUFFER_TYPES uint16
-type BATCHING_MODE uint8
 
 const (
-	L0  BUFFER_TYPES = iota //         1 * 64 	=         64 (iota has been reset)
-	L1                      //         8 * 64 	=        512
-	L2                      //        16 * 64 	=      1,024
-	L3                      //        32 * 64 	=      2,048
-	L4                      //        64 * 64 	=      4,096
-	L5                      //       8 * 4096 	=     32,768
-	L6                      //      16 * 4096 	=     65,536
-	L7                      //      32 * 4096 	=    131,072
-	L8                      // 	    64 * 4096 	=    262,144
-	L9                      //  8 * 64 * 4096 	=  2,097,152
-	L10                     // 16 * 64 * 4096 	=  4,194,304
-	L11                     // 32 * 64 * 4096 	=  8,388,608
-	L12                     // 64 * 64 * 4096 	= 16,777,216
+	L0  BUFFER_TYPES = iota //           1 * 64 	=            64 (iota has been reset)
+	L1                      //           8 * 64 	=           512
+	L2                      //          16 * 64 	=         1,024
+	L3                      //          32 * 64 	=         2,048
+	L4                      //          64 * 64 	=         4,096
+	L5                      //         8 * 4096 	=        32,768
+	L6                      //        16 * 4096 	=        65,536
+	L7                      //        32 * 4096 	=       131,072
+	L8                      // 	      64 * 4096 	=       262,144
+	L9                      //    8 * 64 * 4096 	=     2,097,152
+	L10                     //   16 * 64 * 4096 	=     4,194,304
+	L11                     //   32 * 64 * 4096 	=     8,388,608
+	L12                     //   64 * 64 * 4096 	=    16,777,216
+	L13                     //  8 * 4096 * 4086  	=   134,217,728
+	L14                     // 16 * 4096 * 4096  	=   268,435,456
+	L15                     // 32 * 4096 * 4096  	=   536,870,912
+	L16                     // 64 * 4096 * 4096  	= 1,073,741,824
 )
 
 const (
-	NONE        BATCHING_MODE = iota // Disables tracking of batches, enables use of full entry space for data
-	SMALL_BATCH                      // Uses a single byte to track batch size for a heade size of 5
-	LARGE_BATCH                      // Uses two bytes to track batch size for a header size of 6
+	BATCH_POOL_SIZE = 64 * 4096
 )
 
 type RingBuffer struct {
-	temp       reflect.SliceHeader
-	buffer_ptr *[0]byte
+	slices      [BATCH_POOL_SIZE]reflect.SliceHeader
+	batch_index uint64
+	buffer_ptr  *[0]byte
+}
+
+type ClaimResult struct {
+	SeqNum    uint64
+	BatchNum  uint64
+	BatchSize uint64
 }
 
 type PublishToken struct {
@@ -49,22 +56,28 @@ type PublishToken struct {
 	Failed    chan struct{}
 }
 
-func NewRingBuffer(buffer_type BUFFER_TYPES, batching_mode BATCHING_MODE, data_size uint64) (*RingBuffer, error) {
-	//DebugPrint("Making ring buffer [ Mode: %d / Size: %d / Blocks: %d ]", writer_mode, buffer_size, entry_size)
+func NewRingBuffer(buffer_type BUFFER_TYPES, data_size uint64) (*RingBuffer, error) {
+	//DebugPrint("Making ring buffer [ Mode: %d / Size: %d / Blocks: %d ]", batching_mode, buffer_type, data_size)
 	buffer := &RingBuffer{}
-	result := C.rb_init_buffer(&buffer.buffer_ptr, C.uint8_t(buffer_type), C.rb_batching_mode_t(batching_mode), C.uint64_t(data_size))
-	if result != 0 {
-		return nil, errors.New(fmt.Sprintf("Error initializing ring buffer [%d]", result))
+	_, err := C.rb_init_buffer(&buffer.buffer_ptr, C.uint8_t(buffer_type), C.uint64_t(data_size))
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("Error initializing ring buffer [%d]", err))
 	}
 	size := int(buffer.GetInfo().GetEntrySize())
-	buffer.temp = reflect.SliceHeader{Data: uintptr(0), Len: size, Cap: size}
+	//buffer.temp = reflect.SliceHeader{Data: uintptr(0), Len: size, Cap: size}
+	buffer.batch_index = 0
+	for i := 0; i < BATCH_POOL_SIZE; i++ {
+		buffer.slices[i] = reflect.SliceHeader{Data: uintptr(0), Len: size, Cap: size}
+		//buffer.batches[i] = &SingleEntryBatch{Buffer: buffer, SeqNum: 0}
+	}
+	//DebugPrint("Made ring buffer [ Mode: %d / Size: %d / Blocks: %d ]", batching_mode, buffer_type, data_size)
 	return buffer, nil
 }
 
 func (buffer *RingBuffer) Close() error {
-	result := C.rb_release_buffer(buffer.buffer_ptr)
-	if result != 0 {
-		return errors.New(fmt.Sprintf("Error closing ring buffer [%d]", result))
+	_, err := C.rb_release_buffer(buffer.buffer_ptr)
+	if err != nil {
+		return errors.New(fmt.Sprintf("Error closing ring buffer [%d]", err))
 	}
 	return nil
 }
@@ -79,6 +92,7 @@ func (buffer *RingBuffer) GetStats() *RingBufferStats {
 	return (*RingBufferStats)(unsafe.Pointer(stats_ptr))
 }
 
+/*
 func (buffer *RingBuffer) PublishRaw(data []byte) (*PublishToken, error) {
 	batch, err := buffer.Claim(1)
 	if err != nil {
@@ -91,70 +105,33 @@ func (buffer *RingBuffer) PublishRaw(data []byte) (*PublishToken, error) {
 	}
 	return token, nil
 }
+*/
 
-func (buffer *RingBuffer) Claim(count uint16) (RingBufferBatchWriter, error) {
-	seq_num, err := C.rb_claim(buffer.buffer_ptr, C.uint16_t(count))
+func (buffer *RingBuffer) Claim(count uint16) (*ClaimResult, error) {
+	//seq_num, err := C.rb_claim(buffer.buffer_ptr, C.uint16_t(count))
+	claim_result, err := C.rb_claim(buffer.buffer_ptr, C.uint16_t(count))
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Error: %d", seq_num))
+		return nil, errors.New(fmt.Sprintf("Error: %d", claim_result.seq_num))
 	}
 
-	return buffer.NewSingleEntryBatch(uint64(seq_num)), nil
-
-	/*
-		switch buffer.GetInfo().GetBatchingMode() {
-		case NONE:
-			{
-				return buffer.NewSingleEntryBatch(uint64(seq_num)), nil
-			}
-		case SMALL_BATCH:
-			{
-				return buffer.NewMultiEntryBatch(SMALL_BATCH, uint64(seq_num)), nil
-			}
-		case LARGE_BATCH:
-			{
-				return buffer.NewMultiEntryBatch(LARGE_BATCH, uint64(seq_num)), nil
-			}
-		}
-
-		return nil, errors.New("Unable to find batch type")
-	*/
+	// TODO: Map claim_result into go struct
+	// TODO: Switch buffer operations to use claim_result instead of batch
+	//return buffer.NewSingleEntryBatch(uint64(claim_result.seq_num)), nil
+	//return (*ClaimResult)(unsafe.Pointer(&claim_result)), nil
+	return (*ClaimResult)(unsafe.Pointer(claim_result)), nil
 }
 
 func (buffer *RingBuffer) Entry(seq_num uint64) []byte {
-	//ptr := C.rb_get_entry(buffer.buffer_ptr, C.uint64_t(seq_num))
-	//size := int(buffer.GetInfo().GetEntrySize())
-	//data := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-	//	Data: uintptr(unsafe.Pointer(ptr)),
-	//	Len:  size,
-	//	Cap:  size,
-	//}))
-	//return data
-	//var location *byte[0]
-	//((reflect.SliceHeader)(buffer.temp)) = uintptr(C.rb_get_entry(buffer.buffer_ptr, C.uint64_t(seq_num)))
-	//return buffer.temp //make([]byte, int(buffer.GetInfo().GetEntrySize()))
-	//C.rb_get_entry(buffer.buffer_ptr, C.uint64_t(seq_num))
-	//C.rb_get_entry(buffer.buffer_ptr, C.uint64_t(seq_num))
-	//C.rb_get_entry(buffer.buffer_ptr, C.uint64_t(seq_num))
-	//size := int(buffer.GetInfo().GetEntrySize())
-	buffer.temp.Data = uintptr(C.rb_get_entry(buffer.buffer_ptr, C.uint64_t(seq_num)))
-	return *(*[]byte)(unsafe.Pointer(&buffer.temp))
-	//return *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-	//	Data: uintptr(C.rb_get_entry(buffer.buffer_ptr, C.uint64_t(seq_num))),
-	//	Len:  size,
-	//	Cap:  size,
-	//}))
+	buffer.batch_index++
+	buffer.slices[buffer.batch_index&(BATCH_POOL_SIZE-1)].Data = uintptr(C.rb_get_entry(buffer.buffer_ptr, C.uint64_t(seq_num)))
+	return *(*[]byte)(unsafe.Pointer(&buffer.slices[buffer.batch_index&(BATCH_POOL_SIZE-1)]))
 }
 
-func (buffer *RingBuffer) Cancel(batch RingBufferBatchWriter) error {
-	C.rb_cancel(buffer.buffer_ptr, C.uint64_t(batch.GetSeqNum()), C.uint16_t(batch.GetBatchSize()))
+func (buffer *RingBuffer) Publish(batch *ClaimResult) error {
+	//_, err := C.rb_publish(buffer.buffer_ptr, C.uint64_t(batch.SeqNum), C.uint16_t(batch.BatchSize))
+	_, err := C.rb_publish(buffer.buffer_ptr, (*C.rb_claim_result)(unsafe.Pointer(batch)))
 
-	return nil
-}
-
-func (buffer *RingBuffer) Publish(batch RingBufferBatchWriter) error {
-	C.rb_publish(buffer.buffer_ptr, C.uint64_t(batch.GetSeqNum()), C.uint16_t(batch.GetBatchSize()))
-
-	return nil
+	return err
 }
 
 var debugEnabled bool = true

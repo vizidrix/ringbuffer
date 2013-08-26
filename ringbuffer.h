@@ -23,19 +23,11 @@ typedef enum { 				//   Multiplier    | Entries
 	L12		= 12,			//  64 * 64 * 4096 = 16,777,216 -- 4 Level Trie ^
 } rb_buffer_size_t;
 
-typedef enum {
-	NONE			= 0,
-	SMALL_BATCH 	= 1,
-	LARGE_BATCH 	= 2,
-} rb_batching_mode_t;
-
 typedef struct rb_buffer_info {
 	uint8_t			buffer_type;	/** < Determines number of slots as specified in rb_buffer_size_t enum */
 	uint64_t		buffer_size;	/** < Number of slots allocated per the rules above */
 	uint64_t		size_mask;		/** < Buffer size - 1; Used to maintain scope of buffer */
-	uint8_t			batching_mode;  /** < Sets rules for entry header [ NONE: 0 | SMALL: 5 bytes | LARGE: 6 bytes ] */
-	uint64_t		data_size;		/** < Number of bytes of data for each slot */
-	uint64_t		entry_size;		/** < DATA_HEADER_SIZE + data_size */
+	uint64_t		entry_size;		/** < Number of bytes of data for each slot */
 	uint64_t		total_size;		/** < Total number of bytes allocated to the buffer */
 } rb_buffer_info;
 
@@ -48,7 +40,26 @@ typedef struct rb_buffer_stats {
 	volatile uint64_t	__padding[3];	// 64 bytes - 40 byte struct = 3 * 8 bytes
 } rb_buffer_stats;
 
+typedef struct rb_claim_result {
+	uint64_t seq_num;
+	uint64_t batch_num;
+	uint64_t batch_size;
+} rb_claim_result;
+
 typedef struct rb_buffer rb_buffer;
+
+#define RB_SUCCESS 						0 						/** Successful result */
+#define RB_ERROR						(-40600)				/** Generic error */
+
+#define RB_ALLOC_BUFFER					(RB_ERROR - 100) 		/** Claim request violated buffer constraints */
+#define RB_ALLOC_INFO 					(RB_ERROR - 101) 		/** Claim request violated buffer constraints */
+#define RB_ALLOC_STATS					(RB_ERROR - 102) 		/** Claim request violated buffer constraints */
+#define RB_ALLOC_DATA 					(RB_ERROR - 103) 		/** Claim request violated buffer constraints */
+
+#define RB_CLAIM_PANIC 					(RB_ERROR - 200) 		/** Claim request violated buffer constraints */
+#define RB_WRITE_BUFFER_FULL			(RB_ERROR - 201)		/** Insufficient room in buffer to claim batch */
+
+
 
 /*
 This ring buffer conforms to certain size constraints due to tracking mechanisms
@@ -59,15 +70,16 @@ data_size: 		Number of bytes to allocate per entry
 - For example a data_size of 4096 would be bad but 4090 (+6 byte header) would fill cache line exactly
 - If smaller data sizes are desired try to ensure 4096 % (data_size + 6) == 0
 */
-extern int rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_size, rb_batching_mode_t batching_mode, uint64_t data_size);
-extern int rb_release_buffer(rb_buffer * buffer);
+extern void rb_init_buffer(rb_buffer** buffer_ptr, uint8_t buffer_size, uint64_t data_size);
+extern void rb_release_buffer(rb_buffer * buffer);
 
-extern uint64_t rb_claim(rb_buffer * buffer, uint16_t count);
+//extern uint64_t rb_claim(rb_buffer * buffer, uint16_t count);
+extern rb_claim_result * rb_claim(rb_buffer * buffer, uint16_t count);
+//extern struct rb_claim_result rb_claim(rb_buffer * buffer, uint16_t count);
 
 extern void * rb_get_entry(rb_buffer * buffer, uint64_t seq_num);
 
-extern int rb_cancel(rb_buffer * buffer, uint64_t seq_num, uint16_t count);// Zero out all data
-extern int rb_publish(rb_buffer * buffer, uint64_t seq_num, uint16_t count);
+extern void rb_publish(rb_buffer * buffer, rb_claim_result * batch);
 
 extern rb_buffer_info * rb_get_info(rb_buffer * buffer);
 extern rb_buffer_stats * rb_get_stats(rb_buffer * buffer);
@@ -83,4 +95,4 @@ extern rb_buffer_stats * rb_get_stats(rb_buffer * buffer);
 #endif
 
 
-#endif /* _RB_H_ */
+#endif /* _RINGBUFFER_H_ */
