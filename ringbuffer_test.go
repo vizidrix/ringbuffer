@@ -72,7 +72,6 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_return_a_batch_instance(c *C
 	if batch == nil {
 		c.Fatalf("Should have returned a valid batch")
 	}
-	log.Printf("Batch: %s - %d - %v - %x", batch.BatchNum, batch.BatchNum, batch.BatchNum, batch.BatchNum)
 	c.Assert(batch.BatchNum, Equals, uint64(0))
 	c.Assert(batch.SeqNum, Equals, uint64(0))
 	c.Assert(batch.BatchSize, Equals, uint64(1))
@@ -81,9 +80,6 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_return_a_batch_instance(c *C
 func (g *Given_a_size_64_writer_buffer) Test_Should_be_able_to_write_to_and_verify_single_entry_batch(c *C) {
 	batch, _ := g.buffer.Claim(1)
 	copy(g.buffer.Entry(batch.SeqNum), GetData(10))
-	//batch.CopyTo(0, GetData(10))
-	//batch.Entry(0).CopyFrom(GetData(10))
-	//buffer := batch.Entry(0)
 	buffer := g.buffer.Entry(batch.SeqNum)
 
 	c.Assert(buffer[0], Equals, uint8(10))
@@ -92,50 +88,39 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_be_able_to_write_to_and_veri
 
 func (g *Given_a_size_64_writer_buffer) Test_Should_not_overlap_multiple_buffers(c *C) {
 	batch1, _ := g.buffer.Claim(1)
-	//batch1.CopyTo(0, GetData(10))
-	copy(g.buffer.Entry(batch1.SeqNum), GetData(10))
 	batch2, _ := g.buffer.Claim(1)
-	//batch2.CopyTo(0, GetData(20))
+
+	copy(g.buffer.Entry(batch1.SeqNum), GetData(10))
 	copy(g.buffer.Entry(batch2.SeqNum), GetData(20))
 
 	buffer1 := g.buffer.Entry(batch1.SeqNum)
 	buffer2 := g.buffer.Entry(batch2.SeqNum)
-	//buffer1 := batch1.Entry(0)
-	//buffer2 := batch2.Entry(0)
 
-	log.Printf("Buffer overlap: %v == %v", buffer1, buffer2)
+	//log.Printf("Buffer overlap 1: %v == %v", buffer1, buffer2)
 	for i := 0; i < len(buffer1); i++ {
 		if buffer1[i] == buffer2[i] {
 			c.Fail()
 		}
 	}
-	//c.Fail()
 }
 
 func (g *Given_a_size_64_writer_buffer) Test_Should_not_overlap_multiple_buffers_interleaved(c *C) {
 	batch1, _ := g.buffer.Claim(1)
-	//buffer1 := batch1.Entry(0)
 	buffer1 := g.buffer.Entry(batch1.SeqNum)
-	//batch1.CopyTo(0, GetData(10))
 	copy(g.buffer.Entry(batch1.SeqNum), GetData(10))
 
 	batch2, _ := g.buffer.Claim(1)
-	//buffer2 := batch2.Entry(0)
 	buffer2 := g.buffer.Entry(batch2.SeqNum)
-	//batch2.CopyTo(0, GetData(20))
 	copy(g.buffer.Entry(batch2.SeqNum), GetData(20))
 
-	log.Printf("Buffer overlap: %s == %s", buffer1, buffer2)
+	//log.Printf("Buffer overlap 2: %v == %v", buffer1, buffer2)
 	for i := 0; i < len(buffer1); i++ {
 		if buffer1[i] == buffer2[i] {
-			//log.Printf("Buffer overlap: %s == %s", buffer1, buffer2)
 			c.Fail()
 		}
 	}
 	c.Assert(buffer1[0], Equals, uint8(10))
 	c.Assert(buffer2[0], Equals, uint8(20))
-	//c.Assert(batch1.Entry(0)[0], Equals, uint8(10))
-	//c.Assert(batch2.Entry(0)[0], Equals, uint8(20))
 	c.Assert(g.buffer.Entry(batch1.SeqNum)[0], Equals, uint8(10))
 	c.Assert(g.buffer.Entry(batch2.SeqNum)[0], Equals, uint8(20))
 }
@@ -268,20 +253,6 @@ func Benchmark_ClaimAndPublish_100(b *testing.B) {
 	}
 }
 
-func Benchmark_ClaimAndPublish_1000(b *testing.B) {
-	b.StopTimer()
-	buffer, err := NewRingBuffer(64, 2)
-	if err != nil {
-		log.Printf("Err in buffer create: %s", err)
-	}
-	defer buffer.Close()
-	b.ResetTimer()
-	b.StartTimer()
-	for i := 0; i < b.N; i++ {
-		buffer.ClaimAndPublish(1000)
-	}
-}
-
 func Benchmark_ClaimAndPublishB_1(b *testing.B) {
 	b.StopTimer()
 	buffer, err := NewRingBuffer(64, 2)
@@ -331,28 +302,8 @@ func Benchmark_ClaimAndPublishB_100(b *testing.B) {
 	}
 }
 
-func Benchmark_ClaimAndPublishB_1000(b *testing.B) {
-	b.StopTimer()
-	buffer, err := NewRingBuffer(64, 2)
-	if err != nil {
-		log.Printf("Err in buffer create: %s", err)
-	}
-	defer buffer.Close()
-	b.ResetTimer()
-	b.StartTimer()
-	for i := 0; i < b.N; i++ {
-		for j := 0; j < 1000; j++ {
-			batch, _ := buffer.Claim(1)
-			buffer.Publish(batch)
-		}
-	}
-}
-
 func _Benchmark_Claim_and_cancel(b *testing.B) {
 	b.StopTimer()
-	log.Printf("Bench: %d", b.N)
-	//buffer, _ := NewRingBuffer(L12, LARGE_BATCH, 2)
-	//buffer, err := NewRingBuffer(L16, 2)
 	buffer, err := NewRingBuffer(64, 2)
 	if err != nil {
 		log.Printf("Err in buffer create: %s", err)

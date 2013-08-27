@@ -15,13 +15,27 @@ typedef struct rb_buffer_info {
 } rb_buffer_info;
 
 typedef struct rb_buffer_stats {
-	volatile uint64_t	read_seq_num;	/** < Index of the latest entry released for consumption */
+	volatile uint64_t	write_seq_num;	/** < Index of the latest entry released for production - finished read, ready for write */
+	volatile uint64_t	read_seq_num;	/** < Index of the latest entry released for consumption - finished write, ready for read */
 	volatile uint64_t	read_barrier;	/** < Index of the oldest entry released for consumption but still in use by at least one reader */
-	volatile uint64_t	write_seq_num;	/** < Index of the latest entry released for production */
+	
 	volatile uint64_t	write_barrier;	/** < Index of the oldest entry released for production but still in use by a writer */
 	volatile uint64_t	batch_num;		/** < Index of the last batch allocated to a producer */
 	volatile uint64_t	__padding[3];	// 64 bytes - 40 byte struct = 3 * 8 bytes
 } rb_buffer_stats;
+
+//typedef struct rb_buffer_stats {
+//	volatile uint64_t	read_seq_num;	/** < Index of the latest entry released for consumption */
+//	volatile uint64_t	read_barrier;	/** < Index of the oldest entry released for consumption but still in use by at least one reader */
+//	volatile uint64_t	write_seq_num;	/** < Index of the latest entry released for production */
+//	volatile uint64_t	write_barrier;	/** < Index of the oldest entry released for production but still in use by a writer */
+//	volatile uint64_t	batch_num;		/** < Index of the last batch allocated to a producer */
+//	volatile uint64_t	__padding[3];	// 64 bytes - 40 byte struct = 3 * 8 bytes
+//} rb_buffer_stats;
+
+typedef struct rb_barrier {
+	void *		seq_num_ptr;
+} rb_barrier;
 
 typedef struct rb_batch {
 	uint64_t seq_num;
@@ -31,8 +45,8 @@ typedef struct rb_batch {
 
 typedef struct rb_slice {
 	void *		data;
-	uint32_t	len;
-	uint32_t	cap;
+	uint64_t	len;
+	uint64_t	cap;
 } rb_slice;
 
 typedef struct rb_buffer rb_buffer;
@@ -65,6 +79,7 @@ extern void rb_release_buffer(rb_buffer * buffer);
 extern rb_batch * rb_claim(rb_buffer * buffer, uint16_t count);
 
 extern void * rb_get_entry(rb_buffer * buffer, uint64_t seq_num);
+extern void * rb_get_entry_slice(rb_buffer * buffer, uint64_t seq_num);
 
 extern void rb_publish(rb_buffer * buffer, rb_batch * batch);
 

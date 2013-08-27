@@ -10,6 +10,7 @@
 //#include <xmmintrin.h>
 
 #define __errno(err) if(errno == RB_SUCCESS) { errno = err; }
+// Makes sure that the write cursor cannot lap the slowest reader
 #define rb_write_space(buffer) ((buffer->stats->read_barrier + buffer->info->buffer_size) - buffer->stats->write_seq_num)
 
 struct rb_buffer {
@@ -62,12 +63,17 @@ rb_init_buffer(rb_buffer** buffer_ptr, uint64_t buffer_size, uint64_t entry_size
 	if(!(*buffer_ptr)->data_buffer) {
 		__errno(RB_ALLOC_DATA); goto error;
 	}
-	
-	// Setting default values - should zero in real setup
-	//int i = 0;
-	//for (i = 0; i < (*buffer_ptr)->info->total_size; i++) {
-	//	(*buffer_ptr)->data_buffer[i] = 0xFF - (i % 0xFF);
-	//}
+	// Initialize the buffer and mem pool(s)
+	int i = 0;
+	for(i = 0; i < (*buffer_ptr)->info->buffer_size; i++) {
+		(*buffer_ptr)->slices[i].data = 0;
+		(*buffer_ptr)->slices[i].len = (*buffer_ptr)->info->entry_size;
+		(*buffer_ptr)->slices[i].cap = (*buffer_ptr)->info->entry_size;
+	}
+	// Flush the buffer to all zeros
+	for (i = 0; i < (*buffer_ptr)->info->total_size; i++) {
+		(*buffer_ptr)->data_buffer[i] = 0;//0xFF - (i % 0xFF);
+	}
 
 	__errno(RB_SUCCESS);
 	return;
@@ -140,7 +146,6 @@ rb_get_entry_slice(rb_buffer * buffer, uint64_t seq_num) {
 void
 rb_publish(rb_buffer * buffer, rb_batch * batch) {
 	buffer->stats->write_barrier+=batch->batch_size;
-	//free(batch);
 
 	// REMOVE THIS - Simulates readers immediately consuming
 	buffer->stats->read_barrier+=batch->batch_size;
@@ -163,8 +168,9 @@ void rb_claim_and_publish(rb_buffer * buffer, int count) {
 	}
 }
 
-
-
+// Reader needs to notify when it's barrier is updated
+// and be notified when it's next seq_num is avail
+// i.e. holds a range 'lock' from barrier to seq_num
 
 rb_buffer_info * 
 rb_get_info(rb_buffer * buffer) {

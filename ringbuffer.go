@@ -41,15 +41,14 @@ func NewRingBuffer(buffer_size uint64, data_size uint64) (*RingBuffer, error) {
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Error initializing ring buffer [%d]", err))
 	}
-	size := int(buffer.GetInfo().GetEntrySize())
+	//size := int(buffer.GetInfo().GetEntrySize())
 
 	// TODO: Fix pool impl
-	buffer.batch_index = 0
-	for i := 0; i < BATCH_POOL_SIZE; i++ {
-		buffer.slices[i] = reflect.SliceHeader{Data: uintptr(0), Len: size, Cap: size}
-		//buffer.batches[i] = &SingleEntryBatch{Buffer: buffer, SeqNum: 0}
-	}
-	//DebugPrint("Made ring buffer [ Mode: %d / Size: %d / Blocks: %d ]", batching_mode, buffer_type, data_size)
+	//buffer.batch_index = 0
+	//for i := 0; i < BATCH_POOL_SIZE; i++ {
+	//	buffer.slices[i] = reflect.SliceHeader{Data: uintptr(0), Len: size, Cap: size}
+	//buffer.batches[i] = &SingleEntryBatch{Buffer: buffer, SeqNum: 0}
+	//}
 	return buffer, nil
 }
 
@@ -76,20 +75,15 @@ func (buffer *RingBuffer) Claim(count uint16) (*Batch, error) {
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Unable to claim [%d]: %s", count, err))
 	}
-
 	return (*Batch)(unsafe.Pointer(batch)), nil
 }
 
 func (buffer *RingBuffer) Entry(seq_num uint64) []byte {
-	buffer.batch_index++
-	buffer.slices[buffer.batch_index&(BATCH_POOL_SIZE-1)].Data = uintptr(C.rb_get_entry(buffer.buffer_ptr, C.uint64_t(seq_num)))
-	return *(*[]byte)(unsafe.Pointer(&buffer.slices[buffer.batch_index&(BATCH_POOL_SIZE-1)]))
+	return *(*[]byte)(unsafe.Pointer((*reflect.SliceHeader)(C.rb_get_entry_slice(buffer.buffer_ptr, C.uint64_t(seq_num)))))
 }
 
 func (buffer *RingBuffer) Publish(batch *Batch) error {
-	//_, err := C.rb_publish(buffer.buffer_ptr, C.uint64_t(batch.SeqNum), C.uint16_t(batch.BatchSize))
 	_, err := C.rb_publish(buffer.buffer_ptr, (*C.rb_batch)(unsafe.Pointer(batch)))
-
 	return err
 }
 
