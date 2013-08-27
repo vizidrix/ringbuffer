@@ -34,7 +34,7 @@ var _ = Suite(&Given_nothing{})
 var _ = Suite(&Given_a_size_64_writer_buffer{})
 
 func (g *Given_a_size_64_writer_buffer) SetUpTest(c *C) {
-	g.buffer, _ = NewRingBuffer(L0, 6)
+	g.buffer, _ = NewRingBuffer(64, 6)
 }
 
 func (g *Given_a_size_64_writer_buffer) TearDownTest(c *C) {
@@ -42,24 +42,14 @@ func (g *Given_a_size_64_writer_buffer) TearDownTest(c *C) {
 }
 
 func (g *Given_nothing) Test_Should_be_able_to_create_a_ring_buffer(c *C) {
-	buffer, _ := NewRingBuffer(L6, 2)
+	buffer, _ := NewRingBuffer(65000, 2)
 	info := buffer.GetInfo()
 
-	c.Assert(info.GetBufferType(), Equals, L6)
 	c.Assert(info.GetBufferSize(), Equals, uint64(65536))
 	c.Assert(info.GetEntrySize(), Equals, uint64(2))
 	buffer.Close()
 }
 
-/*
-func (g *Given_batching_mode_none) Test_Should_return_error_if_claim_batch_called_with_multiple(c *C) {
-	_, err := g.buffer.Claim(2)
-
-	if err == nil {
-		c.Fatalf("Batch mode none shouldn't allow multiple claim: %s", err)
-	}
-}
-*/
 func (g *Given_a_size_64_writer_buffer) Test_Should_return_error_if_claim_batch_called_with_zero(c *C) {
 	_, err := g.buffer.Claim(0)
 
@@ -153,7 +143,6 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_not_overlap_multiple_buffers
 func (g *Given_a_size_64_writer_buffer) Test_Should_populate_RingBufferInfo(c *C) {
 	info := g.buffer.GetInfo()
 
-	c.Assert(info.GetBufferType(), Equals, L0)
 	c.Assert(info.GetBufferSize(), Equals, uint64(64))
 	c.Assert(info.GetEntrySize(), Equals, uint64(6))
 }
@@ -202,50 +191,9 @@ func (g *Given_a_size_64_writer_buffer) Test_Should_return_seq_num(c *C) {
 	//c.Fail()
 }
 
-/*
-
-func (g *Given_a_single_writer_buffer) Test_Should_init_ring_buffer(c *C) {
-	//func Test_Should_init_ring_buffer(t *testing.T) {
-	//EnableDebug()
-	//defer DisableDebug()
-
-	data := make([]byte, 10)
-	batch, err := g.buffer.Claim(1)
-	if err != nil {
-		c.Errorf("Error claiming batch: %s", err)
-	}
-
-	err = batch.Entries[0].CopyFrom(data)
-	if err != nil {
-		c.Errorf("Error copying to entry: %s", err)
-	}
-
-	token, err := batch.Publish()
-	if err != nil {
-		c.Errorf("Error publishing batch: %s", err)
-	}
-
-	select {
-	case count := <-token.Published:
-		{
-			c.Errorf("Batch published: %d", count)
-		}
-	case err := <-token.Failed:
-		{
-			c.Errorf("Error in publish token: %s", err)
-		}
-	case <-time.After(10 * time.Millisecond):
-		{
-			c.Errorf("Publish timed out")
-		}
-	}
-
-	//c.Fail()
-}
-*/
-
 // 0.28 ns/op empty
 // 32 ns/op with noop just method calls
+// Each interop call costs ~30-45ns
 func Benchmark_Logic(b *testing.B) {
 	//data := make([]byte, 10)
 	//var batch *Batch
@@ -253,7 +201,7 @@ func Benchmark_Logic(b *testing.B) {
 	//defer buffer.Close()
 	log.Printf("Bench: %d", b.N)
 	for i := 0; i < b.N; i++ {
-		buffer, _ := NewRingBuffer(L0, 2)
+		buffer, _ := NewRingBuffer(64, 2)
 
 		batch, _ := buffer.Claim(1)
 		//batch.Entry(0).CopyFrom(GetData(10))
@@ -273,20 +221,156 @@ func Benchmark_Logic(b *testing.B) {
 	}
 }
 
-func Benchmark_Claim_and_cancel(b *testing.B) {
+// 64 -> 20 -> 16 -> 15
+// 44 / 1
+//  4 / 10
+//  1 / 100
+
+func Benchmark_ClaimAndPublish_1(b *testing.B) {
+	b.StopTimer()
+	buffer, err := NewRingBuffer(64, 2)
+	if err != nil {
+		log.Printf("Err in buffer create: %s", err)
+	}
+	defer buffer.Close()
+	b.ResetTimer()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		buffer.ClaimAndPublish(1)
+	}
+}
+
+func Benchmark_ClaimAndPublish_10(b *testing.B) {
+	b.StopTimer()
+	buffer, err := NewRingBuffer(64, 2)
+	if err != nil {
+		log.Printf("Err in buffer create: %s", err)
+	}
+	defer buffer.Close()
+	b.ResetTimer()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		buffer.ClaimAndPublish(10)
+	}
+}
+
+func Benchmark_ClaimAndPublish_100(b *testing.B) {
+	b.StopTimer()
+	buffer, err := NewRingBuffer(64, 2)
+	if err != nil {
+		log.Printf("Err in buffer create: %s", err)
+	}
+	defer buffer.Close()
+	b.ResetTimer()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		buffer.ClaimAndPublish(100)
+	}
+}
+
+func Benchmark_ClaimAndPublish_1000(b *testing.B) {
+	b.StopTimer()
+	buffer, err := NewRingBuffer(64, 2)
+	if err != nil {
+		log.Printf("Err in buffer create: %s", err)
+	}
+	defer buffer.Close()
+	b.ResetTimer()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		buffer.ClaimAndPublish(1000)
+	}
+}
+
+func Benchmark_ClaimAndPublishB_1(b *testing.B) {
+	b.StopTimer()
+	buffer, err := NewRingBuffer(64, 2)
+	if err != nil {
+		log.Printf("Err in buffer create: %s", err)
+	}
+	defer buffer.Close()
+	b.ResetTimer()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		batch, _ := buffer.Claim(1)
+		buffer.Publish(batch)
+	}
+}
+
+func Benchmark_ClaimAndPublishB_10(b *testing.B) {
+	b.StopTimer()
+	buffer, err := NewRingBuffer(64, 2)
+	if err != nil {
+		log.Printf("Err in buffer create: %s", err)
+	}
+	defer buffer.Close()
+	b.ResetTimer()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < 10; j++ {
+			batch, _ := buffer.Claim(1)
+			buffer.Publish(batch)
+		}
+	}
+}
+
+func Benchmark_ClaimAndPublishB_100(b *testing.B) {
+	b.StopTimer()
+	buffer, err := NewRingBuffer(64, 2)
+	if err != nil {
+		log.Printf("Err in buffer create: %s", err)
+	}
+	defer buffer.Close()
+	b.ResetTimer()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < 100; j++ {
+			batch, _ := buffer.Claim(1)
+			buffer.Publish(batch)
+		}
+	}
+}
+
+func Benchmark_ClaimAndPublishB_1000(b *testing.B) {
+	b.StopTimer()
+	buffer, err := NewRingBuffer(64, 2)
+	if err != nil {
+		log.Printf("Err in buffer create: %s", err)
+	}
+	defer buffer.Close()
+	b.ResetTimer()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < 1000; j++ {
+			batch, _ := buffer.Claim(1)
+			buffer.Publish(batch)
+		}
+	}
+}
+
+func _Benchmark_Claim_and_cancel(b *testing.B) {
 	b.StopTimer()
 	log.Printf("Bench: %d", b.N)
 	//buffer, _ := NewRingBuffer(L12, LARGE_BATCH, 2)
-	buffer, err := NewRingBuffer(L16, 2)
+	//buffer, err := NewRingBuffer(L16, 2)
+	buffer, err := NewRingBuffer(64, 2)
 	if err != nil {
 		log.Printf("Err in buffer create: %s", err)
 	}
 	//data := GetData(2)
 	//batch, _ := buffer.Claim(1)
 	defer buffer.Close()
+	b.ResetTimer()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		buffer.Claim(1) // 344 ns/op
+
+		buffer.ClaimAndPublish(10)
+
+		/*
+			batch, _ := buffer.Claim(1) // 344 ns/op - down to 72 ns/op
+			buffer.Publish(batch)
+		*/
+
 		/*
 			batch, err := buffer.Claim(1)
 			if err != nil {

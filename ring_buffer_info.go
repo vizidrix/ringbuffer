@@ -5,15 +5,10 @@ import (
 )
 
 type RingBufferInfo struct {
-	buffer_type uint8
 	buffer_size uint64
 	size_mask   uint64
 	entry_size  uint64
 	total_size  uint64
-}
-
-func (info *RingBufferInfo) GetBufferType() BUFFER_TYPES {
-	return (BUFFER_TYPES)(info.buffer_type)
 }
 
 func (info *RingBufferInfo) GetBufferSize() uint64 {
@@ -33,5 +28,5 @@ func (info *RingBufferInfo) GetTotalSize() uint64 {
 }
 
 func (info *RingBufferInfo) String() string {
-	return fmt.Sprintf("[%d_%dslots_%d]", info.buffer_type, info.buffer_size, info.total_size)
+	return fmt.Sprintf("[%dslots_%d]", info.buffer_size, info.total_size)
 }
