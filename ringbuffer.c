@@ -182,35 +182,36 @@ error:
 void temp(rb_buffer * buffer, uint64_t count) {
 	//rb_buffer * buffer;
 	//rb_init_buffer(&buffer, 1000, 1, 1024);
-	int i = 0;
-	for(i = 0; i < count; i++) {
-		char cancel = 0;
-		rb_batch * batch = rb_claim(buffer, 1, &cancel);
+	//int i = 0;
+	//for(i = 0; i < count; i++) {
+	//	char cancel = 0;
+		//rb_batch * batch = rb_claim(buffer, 1, &cancel);
+		//rb_publish(buffer, batch);
+		//rb_release(buffer, batch);
+
 
 		//if(batch->batch_num != i) {
 		//	__errno(100);
 		//	return;
 		//}
-	}
+	//}
 	//rb_free_buffer(&buffer);
-	return;
+	//return;
 }
 
 void // Publish is not guaranteed to be sequential
 rb_publish(rb_buffer * buffer, rb_batch * batch) {
 	batch->state = PUBLISHED;
 	BARRIER();
-	DebugPrint("%d != %d", batch->batch_num, buffer->stats.read_batch_num);
+	//DebugPrint("%d != %d", batch->batch_num, buffer->stats.read_batch_num);
 	if(batch->batch_num != buffer->stats.read_batch_num) {
 		return; // All done here
 	}
 	uint64_t index = batch->batch_num;
 	do {
-		DebugPrint("1 Writing read_batch_num %d to new value %d", buffer->stats.read_batch_num, index);
 		// Scan across all batches starting at the next slot looking for other published batches
 		while(buffer->batches[(++index) & buffer->info.batch_size_mask].state == PUBLISHED) {}
 		// While loop overshoots by one... but this pointer should point to the oldest publish?
-		DebugPrint("2 Writing read_batch_num %d to new value %d", buffer->stats.read_batch_num, index);
 		__sync_bool_compare_and_swap(&buffer->stats.read_batch_num, batch->batch_num, index);
 	// Handle a potential edge case where the next batch was published and returned in between 
 	// the prev while and the CAS.  Should be very rare, if ever
@@ -235,13 +236,13 @@ error:
 rb_batch *
 rb_claim(rb_buffer * buffer, uint16_t count, void* cancel) {
 	if(count == 0 || count > buffer->info.data_buffer_size) {
-		DebugPrint("count [%d] == 0 || > Data buffer size: %d", count, buffer->info.data_buffer_size);
+		//DebugPrint("count [%d] == 0 || > Data buffer size: %d", count, buffer->info.data_buffer_size);
 		__errno(RB_CLAIM_PANIC);
 		goto error;
 	} // Must be > 0 and < buffer size
 	uint64_t index = buffer->stats.write_batch_num;
 	// Scan forward trying to put your count in the slot first
-	DebugPrint("%d >= (%d + %d)", index, buffer->stats.barrier_batch_num, buffer->info.batch_buffer_size);
+	//DebugPrint("%d >= (%d + %d)", index, buffer->stats.barrier_batch_num, buffer->info.batch_buffer_size);
 	while(__builtin_expect(index >= (buffer->stats.barrier_batch_num + buffer->info.batch_buffer_size), 0) ||
 		!__sync_bool_compare_and_swap(&buffer->batches[index++ & buffer->info.batch_size_mask].batch_size, 0, count)) {
 		sched_yield();

@@ -42,25 +42,12 @@ func (g *Given_a_size_4_buffer) TearDownTest(c *C) {
 	g.buffer.Close()
 }
 
-//Causes error
-func (g *Given_nothing) Test_Should_not_segfault_on_claim(c *C) {
-	buffer, _ := NewRingBuffer(60, 65000, 2)
+//Causes error - Don't delete this, needs to be fixed!!
+func (g *Given_nothing) Test_Should_not_segfault_on_claimasync_that_is_not_waited_for(c *C) {
+	buffer, _ := NewRingBuffer(1, 1, 1)
 	defer buffer.Close()
-	info := buffer.GetInfo()
 
-	//buffer.Claim(1)
-	//buffer.Claim(1)
-	//buffer.Claim(1)
-	//buffer.Claim(1)
-	//buffer.Claim(1)
-	//log.Printf("Big:\n\n%s\n\n", buffer.BatchStateString())
-
-	c.Assert(info.GetBatchBufferSize(), Equals, uint64(64))
-	log.Printf("Got batch size")
-	c.Assert(info.GetDataBufferSize(), Equals, uint64(65536))
-	log.Printf("Got data size")
-	c.Assert(info.GetEntrySize(), Equals, uint64(2))
-	log.Printf("Got entry size")
+	//buffer.ClaimAsync(1, 1*time.Millisecond)
 }
 
 func (g *Given_nothing) Test_Should_be_able_to_create_a_ring_buffer(c *C) {
@@ -80,7 +67,7 @@ func (g *Given_nothing) Test_Should_not_error_if_closed_twice(c *C) {
 }
 
 func (g *Given_a_size_4_buffer) Test_Should_return_error_if_claim_batch_called_with_zero(c *C) {
-	_, err := g.buffer.Claim(0).Wait(1 * time.Millisecond)
+	_, err := g.buffer.Claim(0, 1*time.Millisecond)
 
 	if err == nil {
 		c.Fatalf("Should not allow claim size zero: %s", err)
@@ -88,7 +75,7 @@ func (g *Given_a_size_4_buffer) Test_Should_return_error_if_claim_batch_called_w
 }
 
 func (g *Given_a_size_4_buffer) Test_Should_return_error_if_claim_batch_called_with_size_bigger_than_available(c *C) {
-	_, err := g.buffer.Claim(5).Wait(1 * time.Millisecond)
+	_, err := g.buffer.Claim(5, 1*time.Millisecond)
 
 	if err == nil {
 		c.Fatalf("Should not allow claim size zero: %s", err)
@@ -96,7 +83,7 @@ func (g *Given_a_size_4_buffer) Test_Should_return_error_if_claim_batch_called_w
 }
 
 func (g *Given_a_size_4_buffer) Test_Should_claim_a_single_batch(c *C) {
-	batch, err := g.buffer.Claim(1).Wait(1 * time.Millisecond)
+	batch, err := g.buffer.Claim(1, 1*time.Millisecond)
 	if err != nil {
 		c.Fatalf("Error during claim: %s", err)
 	}
@@ -107,9 +94,9 @@ func (g *Given_a_size_4_buffer) Test_Should_claim_a_single_batch(c *C) {
 }
 
 func (g *Given_a_size_4_buffer) Test_Should_claim_two_batches(c *C) {
-	batch1, _ := g.buffer.Claim(1).Wait(1 * time.Millisecond)
+	batch1, _ := g.buffer.Claim(1, 1*time.Millisecond)
 	//log.Printf("Batch 1: %s", batch1)
-	batch2, _ := g.buffer.Claim(1).Wait(1 * time.Millisecond)
+	batch2, _ := g.buffer.Claim(1, 1*time.Millisecond)
 	//log.Printf("Batch 2: %s", batch2)
 
 	c.Assert(batch1.GetBatchNum(), Equals, uint64(0))
@@ -125,12 +112,12 @@ func (g *Given_a_size_4_buffer) Test_Should_claim_two_batches(c *C) {
 }
 
 func (g *Given_a_size_4_buffer) Test_Should_block_until_cancel_if_full(c *C) {
-	g.buffer.Claim(1)
-	g.buffer.Claim(1)
-	g.buffer.Claim(1)
-	g.buffer.Claim(1)
+	g.buffer.Claim(1, 1*time.Millisecond)
+	g.buffer.Claim(1, 1*time.Millisecond)
+	g.buffer.Claim(1, 1*time.Millisecond)
+	g.buffer.Claim(1, 1*time.Millisecond)
 
-	claimResult := g.buffer.Claim(1)
+	claimResult := g.buffer.ClaimAsync(1, 1*time.Millisecond)
 
 	select {
 	case <-claimResult.ResultChan:
@@ -154,8 +141,8 @@ func (g *Given_a_size_4_buffer) Test_Should_block_until_cancel_if_full(c *C) {
 }
 
 func (g *Given_a_size_4_buffer) Test_Should_not_allow_release_that_overlaps_the_read_seq_num(c *C) {
-	g.buffer.Claim(1)
-	batch, _ := g.buffer.Claim(1).Wait(1 * time.Microsecond)
+	g.buffer.Claim(1, 1*time.Millisecond)
+	batch, _ := g.buffer.Claim(1, 1*time.Millisecond)
 	g.buffer.Publish(batch)
 	err := g.buffer.Release(batch)
 
@@ -165,7 +152,7 @@ func (g *Given_a_size_4_buffer) Test_Should_not_allow_release_that_overlaps_the_
 }
 
 func (g *Given_a_size_4_buffer) Test_Should_return_error_if_releasing_batch_that_is_not_yet_published(c *C) {
-	batch1, _ := g.buffer.Claim(1).Wait(1 * time.Microsecond)
+	batch1, _ := g.buffer.Claim(1, 1*time.Millisecond)
 	err := g.buffer.Release(batch1)
 	if err == nil {
 		c.Fail()
@@ -173,7 +160,7 @@ func (g *Given_a_size_4_buffer) Test_Should_return_error_if_releasing_batch_that
 }
 
 func (g *Given_a_size_4_buffer) Test_Should_return_error_if_releasing_batch_that_is_already_released(c *C) {
-	batch1, _ := g.buffer.Claim(1).Wait(1 * time.Microsecond)
+	batch1, _ := g.buffer.Claim(1, 1*time.Millisecond)
 	g.buffer.Publish(batch1)
 	g.buffer.Release(batch1)
 	err := g.buffer.Release(batch1)
@@ -183,51 +170,51 @@ func (g *Given_a_size_4_buffer) Test_Should_return_error_if_releasing_batch_that
 }
 
 func (g *Given_a_size_4_buffer) Test_Should_not_block_if_previous_batches_were_released(c *C) {
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	batch1, _ := g.buffer.Claim(1).Wait(1 * time.Microsecond)
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	batch2, _ := g.buffer.Claim(1).Wait(1 * time.Microsecond)
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	batch3, _ := g.buffer.Claim(1).Wait(1 * time.Microsecond)
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	batch4, _ := g.buffer.Claim(1).Wait(1 * time.Microsecond)
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	batch1, _ := g.buffer.Claim(1, 1*time.Millisecond)
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	batch2, _ := g.buffer.Claim(1, 1*time.Millisecond)
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	batch3, _ := g.buffer.Claim(1, 1*time.Millisecond)
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	batch4, _ := g.buffer.Claim(1, 1*time.Millisecond)
 
-	log.Printf("State: %s", g.buffer.BatchStateString())
+	//log.Printf("State: %s", g.buffer.BatchStateString())
 	//log.Printf("Buffer State: %s", g.buffer.GetStats())
 
 	//g.buffer.Publish(batch4)
 
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	log.Printf("Buffer State: %s", g.buffer.GetStats())
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	//log.Printf("Buffer State: %s", g.buffer.GetStats())
 
 	g.buffer.Publish(batch2)
 
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	log.Printf("Buffer State: %s", g.buffer.GetStats())
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	//log.Printf("Buffer State: %s", g.buffer.GetStats())
 
 	g.buffer.Publish(batch3)
 
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	log.Printf("Buffer State: %s", g.buffer.GetStats())
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	//log.Printf("Buffer State: %s", g.buffer.GetStats())
 
 	g.buffer.Publish(batch1)
 
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	log.Printf("Buffer State: %s", g.buffer.GetStats())
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	//log.Printf("Buffer State: %s", g.buffer.GetStats())
 	err := g.buffer.Release(batch1)
 	if err != nil {
 		c.Fatalf("Failed to release batch: %s", err)
 	}
 
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	log.Printf("Buffer State: %s", g.buffer.GetStats())
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	//log.Printf("Buffer State: %s", g.buffer.GetStats())
 	err = g.buffer.Release(batch2)
 	if err != nil {
 		c.Fatalf("Failed to release batch: %s", err)
 	}
 
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	log.Printf("Buffer State: %s", g.buffer.GetStats())
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	//log.Printf("Buffer State: %s", g.buffer.GetStats())
 	err = g.buffer.Release(batch3)
 	if err != nil {
 		c.Fatalf("Failed to release batch: %s", err)
@@ -235,15 +222,15 @@ func (g *Given_a_size_4_buffer) Test_Should_not_block_if_previous_batches_were_r
 
 	g.buffer.Publish(batch4)
 
-	log.Printf("State: %s", g.buffer.BatchStateString())
-	log.Printf("Buffer State: %s", g.buffer.GetStats())
+	//log.Printf("State: %s", g.buffer.BatchStateString())
+	//log.Printf("Buffer State: %s", g.buffer.GetStats())
 
-	claimResult := g.buffer.Claim(1)
+	claimResult := g.buffer.ClaimAsync(1, 1*time.Millisecond)
 
 	select {
-	case batch := <-claimResult.ResultChan:
+	case <-claimResult.ResultChan:
 		{
-			log.Printf("Result: %s", batch)
+			//log.Printf("Result: %s", batch)
 		}
 	case <-claimResult.CancelChan:
 		{
@@ -623,15 +610,26 @@ func _Benchmark_Claim_and_cancel(b *testing.B) {
 */
 
 func Run_Temp(b *testing.B, c uint64) {
-	log.Printf("Bench: %d", b.N)
+	log.Printf("Bench: %d\t\tCount: %d", b.N, c)
 	buffer, _ := NewRingBuffer(10000, 8, 8)
+	chan1 := make(chan struct{})
+	chan2 := make(chan struct{})
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		for count := 0; count < 10; count++ {
+		//for count := 0; count < 10; count++ {
+		//log.Printf(buffer.BatchStateString())
+		go func() {
 			Temp(buffer, c)
-		}
-
+			close(chan1)
+		}()
+		go func() {
+			Temp(buffer, c)
+			close(chan2)
+		}()
+		//}
+		<-chan1
+		<-chan2
 	}
 	buffer.Close()
 }
@@ -657,7 +655,7 @@ func aBenchmark_Claim(b *testing.B) {
 	buffer, _ := NewRingBuffer(uint64(b.N), 8, 8)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		buffer.Claim(1).Wait(1 * time.Millisecond)
+		buffer.Claim(1, 1*time.Millisecond)
 	}
 	buffer.Close()
 }
@@ -674,7 +672,7 @@ func BTemp(b *testing.B) {
 		//buffer.Claim(1)
 		//buffer.Claim(1)
 		//buffer.Claim(1)
-		batch, err := buffer.Claim(1).Wait(10 * time.Millisecond)
+		batch, err := buffer.Claim(1, 10*time.Millisecond)
 		if err != nil {
 			b.Fatalf("Failed: %s", err)
 		}

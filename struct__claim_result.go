@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log"
 	//. "launchpad.net/tomb"
-	"time"
+	//"time"
 )
 
 type ClaimResult struct {
@@ -22,49 +22,22 @@ func NewClaimResult() *ClaimResult {
 	}
 }
 
-func (claimResult *ClaimResult) Wait(timeout time.Duration) (*Batch, error) {
-	if timeout == 0 {
-		select { // Don't set a timeout if duration was zero ns
-		case result := <-claimResult.ResultChan:
-			{
-				//log.Printf("Result: %s", result)
-				return result, nil
-			}
-		case <-claimResult.CancelChan:
-			{
-				log.Printf("Cancel")
-				return nil, errors.New("Claim canceled (no timeout)")
-			}
-		case err := <-claimResult.ErrorChan:
-			{
-				log.Printf("Err: %s", err)
-				return nil, err
-			}
+func (claimResult *ClaimResult) Wait() (*Batch, error) {
+	select { // Don't set a timeout if duration was zero ns
+	case result := <-claimResult.ResultChan:
+		{
+			//log.Printf("Result: %s", result)
+			return result, nil
 		}
-	} else {
-		select {
-		case result := <-claimResult.ResultChan:
-			{
-				//log.Printf("Result: %s", result)
-				return result, nil
-			}
-		case <-claimResult.CancelChan:
-			{
-				log.Printf("Cancel")
-				return nil, errors.New("Claim canceled (timeout set)")
-			}
-		case err := <-claimResult.ErrorChan:
-			{
-				log.Printf("Err: %s", err)
-				return nil, err
-			}
-		case <-time.After(timeout):
-			{
-				log.Printf("Claim timed out")
-				close(claimResult.CancelChan) // <- struct{}{}
-				return claimResult.Wait(0)
-				//return nil, errors.New("Claim timed out")
-			}
+	case <-claimResult.CancelChan:
+		{
+			log.Printf("Cancel")
+			return nil, errors.New("Claim canceled (no timeout)")
+		}
+	case err := <-claimResult.ErrorChan:
+		{
+			log.Printf("Err: %s", err)
+			return nil, err
 		}
 	}
 }

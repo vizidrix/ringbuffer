@@ -11,11 +11,14 @@ import (
 	"log"
 	"reflect"
 	"strings"
+	"time"
 	"unsafe"
 )
 
 type RingBuffer struct {
-	buffer_ptr *[0]byte
+	initialized bool
+	closingChan chan struct{}
+	buffer_ptr  *[0]byte
 }
 
 type PublishToken struct {
@@ -24,24 +27,28 @@ type PublishToken struct {
 }
 
 func NewRingBuffer(batch_size uint64, buffer_size uint64, data_size uint64) (*RingBuffer, error) {
-	buffer := &RingBuffer{}
+	buffer := &RingBuffer{
+		closingChan: make(chan struct{}),
+	}
 	//log.Printf("Creating ring buffer")
 	_, err := C.rb_init_buffer(&buffer.buffer_ptr, C.uint64_t(batch_size), C.uint64_t(buffer_size), C.uint64_t(data_size))
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Error initializing ring buffer [%d]", err))
 	}
 	//log.Printf("Created ring buffer")
+	buffer.initialized = true
 	return buffer, nil
 }
 
 func (buffer *RingBuffer) Close() error {
-	log.Printf("Closing: %s", buffer)
+	if buffer.initialized {
+		close(buffer.closingChan)
+	}
 	_, err := C.rb_free_buffer(&buffer.buffer_ptr)
-	log.Printf("Freed")
 	if err != nil {
 		return errors.New(fmt.Sprintf("Error closing ring buffer [%d]", err))
 	}
-	log.Printf("Return from Close")
+	buffer.initialized = false
 	return nil
 }
 
@@ -58,33 +65,59 @@ func (buffer *RingBuffer) Claim(count uint16) (batch *Batch, cancelToken *struct
 }
 */
 
-func (buffer *RingBuffer) Claim(count uint16) *ClaimResult {
+func (buffer *RingBuffer) ClaimAsync(count uint16, timeout time.Duration) *ClaimResult {
 	result := NewClaimResult()
 	cancelToken := &struct{}{}
 	go func(token *struct{}) {
-		<-result.CancelChan
-		token = nil // Cancel token
-		log.Printf("Finished cancel goroutine")
+		if timeout == 0 {
+			select {
+			case <-buffer.closingChan:
+				{
+					token = nil
+				}
+			case <-result.CancelChan:
+				{
+					token = nil
+				}
+			}
+		} else {
+			select {
+			case <-buffer.closingChan:
+				{
+					token = nil
+				}
+			case <-result.CancelChan:
+				{
+					token = nil // Cancel token
+				}
+			case <-time.After(timeout):
+				{
+					token = nil
+					close(result.CancelChan)
+				}
+			}
+		}
 	}(cancelToken)
-	log.Printf("Cancel goroutine launched")
 	go func(token *struct{}) {
+		// Put an entry into buffer's pending claims
+
+		// Currently an async claim that isn't waited for causes a segfault
+		// See test for example
 		c_batch, err := C.rb_claim(buffer.buffer_ptr, C.uint16_t(count), unsafe.Pointer(token))
-		log.Printf("Claimed: %s", c_batch)
+		//log.Printf("Exiting claim chan")
 		if err != nil {
-			log.Printf("Got err")
 			result.ErrorChan <- err
 		} else {
-			log.Printf("No err")
 			batch_ptr := (*Batch)(unsafe.Pointer(c_batch))
 			// TODO: Handle potential race where result chan is closed when result comes back
-			log.Printf("Converted batch")
 			result.ResultChan <- batch_ptr
-			log.Printf("Return after converting")
 		}
-		log.Printf("Finished value goroutine")
 	}(cancelToken)
-	log.Printf("Value goroutine launched")
 	return result
+}
+
+func (buffer *RingBuffer) Claim(count uint16, timeout time.Duration) (*Batch, error) {
+	return buffer.ClaimAsync(count, timeout).Wait()
 }
 
 /*
@@ -171,6 +204,13 @@ func (buffer *RingBuffer) BatchStateString() string {
 		result += key + "_"
 	}
 	return result
+}
+
+func (buffer *RingBuffer) String() string {
+	return fmt.Sprintf("\nInfo: %s\nStats: %s\nState: %s\n",
+		buffer.GetInfo(),
+		buffer.GetStats(),
+		buffer.BatchStateString())
 }
 
 //
