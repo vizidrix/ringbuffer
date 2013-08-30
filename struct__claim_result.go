@@ -2,17 +2,76 @@ package ringbuffer
 
 import (
 	"errors"
-	. "launchpad.net/tomb"
+	"log"
+	//. "launchpad.net/tomb"
 	"time"
 )
 
 type ClaimResult struct {
 	ResultChan chan *Batch
-	Tomb       Tomb
+	CancelChan chan struct{}
+	ErrorChan  chan error
+	//Tomb       Tomb
+}
+
+func NewClaimResult() *ClaimResult {
+	return &ClaimResult{
+		ResultChan: make(chan *Batch),
+		CancelChan: make(chan struct{}),
+		ErrorChan:  make(chan error),
+	}
 }
 
 func (claimResult *ClaimResult) Wait(timeout time.Duration) (*Batch, error) {
-	if timeout == 0*time.Nanosecond {
+	if timeout == 0 {
+		select { // Don't set a timeout if duration was zero ns
+		case result := <-claimResult.ResultChan:
+			{
+				//log.Printf("Result: %s", result)
+				return result, nil
+			}
+		case <-claimResult.CancelChan:
+			{
+				log.Printf("Cancel")
+				return nil, errors.New("Claim canceled (no timeout)")
+			}
+		case err := <-claimResult.ErrorChan:
+			{
+				log.Printf("Err: %s", err)
+				return nil, err
+			}
+		}
+	} else {
+		select {
+		case result := <-claimResult.ResultChan:
+			{
+				//log.Printf("Result: %s", result)
+				return result, nil
+			}
+		case <-claimResult.CancelChan:
+			{
+				log.Printf("Cancel")
+				return nil, errors.New("Claim canceled (timeout set)")
+			}
+		case err := <-claimResult.ErrorChan:
+			{
+				log.Printf("Err: %s", err)
+				return nil, err
+			}
+		case <-time.After(timeout):
+			{
+				log.Printf("Claim timed out")
+				close(claimResult.CancelChan) // <- struct{}{}
+				return claimResult.Wait(0)
+				//return nil, errors.New("Claim timed out")
+			}
+		}
+	}
+}
+
+/*
+func (claimResult *ClaimResult) Wait(timeout time.Duration) (*Batch, error) {
+	if timeout == 0 {
 		select { // Don't set a timeout if duration was zero ns
 		case result := <-claimResult.ResultChan:
 			{
@@ -41,12 +100,13 @@ func (claimResult *ClaimResult) Wait(timeout time.Duration) (*Batch, error) {
 		}
 	}
 }
-
+*/
 // TODO: Need to make sure canceled claims are somehow cleaned up reliably
 func (claimResult *ClaimResult) Cancel() {
+	claimResult.CancelChan <- struct{}{}
 	// Maybe go routine waiting for result can handle cleanup
 	// if it notices the result chan is closed when it tries
 	// to publish?
 	//claimResult.CloseAll()
-	claimResult.Tomb.Kill(errors.New("Claim canceled"))
+	//claimResult.Tomb.Kill(errors.New("Claim canceled"))
 }
