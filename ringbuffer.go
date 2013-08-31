@@ -42,13 +42,14 @@ func NewRingBuffer(batch_size uint64, buffer_size uint64, data_size uint64) (*Ri
 
 func (buffer *RingBuffer) Close() error {
 	if buffer.initialized {
+		buffer.initialized = false
 		close(buffer.closingChan)
 	}
 	_, err := C.rb_free_buffer(&buffer.buffer_ptr)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Error closing ring buffer [%d]", err))
 	}
-	buffer.initialized = false
+
 	return nil
 }
 
@@ -93,7 +94,7 @@ func (buffer *RingBuffer) ClaimAsync(count uint16, timeout time.Duration) *Claim
 			case <-time.After(timeout):
 				{
 					token = nil
-					close(result.CancelChan)
+					//close(result.CancelChan)
 				}
 			}
 		}

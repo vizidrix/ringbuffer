@@ -249,6 +249,42 @@ func (g *Given_a_size_4_buffer) Test_Should_not_block_if_previous_batches_were_r
 	//c.Fail()
 }
 
+func (g *Given_a_size_4_buffer) aTest_Should_not_hang(c *C) {
+	b := struct {
+		N int
+	}{
+		N: 10,
+	}
+	var count uint64 = 10
+	log.Printf("Bench: %d\t\tCount: %d", b.N, count)
+	//buffer, _ := NewRingBuffer(100000, 8, 8)
+
+	//b.ResetTimer()
+
+	//for count := 0; count < 10; count++ {
+	//log.Printf(buffer.BatchStateString())
+	chan1 := make(chan struct{})
+	chan2 := make(chan struct{})
+	go func() {
+		for i := 0; i < b.N; i++ {
+			Temp(g.buffer, count)
+		}
+		close(chan1)
+	}()
+	go func() {
+		for i := 0; i < b.N; i++ {
+			Temp(g.buffer, count)
+		}
+		close(chan2)
+	}()
+	//}
+	<-chan1
+	<-chan2
+	//buffer.Close()
+
+	//c.Fail()
+}
+
 //
 
 //
@@ -611,26 +647,31 @@ func _Benchmark_Claim_and_cancel(b *testing.B) {
 
 func Run_Temp(b *testing.B, c uint64) {
 	log.Printf("Bench: %d\t\tCount: %d", b.N, c)
-	buffer, _ := NewRingBuffer(10000, 8, 8)
-	chan1 := make(chan struct{})
-	chan2 := make(chan struct{})
+	buffer, _ := NewRingBuffer(10, 8, 8)
+
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		//for count := 0; count < 10; count++ {
-		//log.Printf(buffer.BatchStateString())
-		go func() {
+	//for count := 0; count < 10; count++ {
+	//log.Printf(buffer.BatchStateString())
+	chan1 := make(chan struct{})
+	chan2 := make(chan struct{})
+	go func() {
+		for i := 0; i < b.N; i++ {
+			log.Printf("C1: %d", i)
 			Temp(buffer, c)
-			close(chan1)
-		}()
-		go func() {
+		}
+		close(chan1)
+	}()
+	go func() {
+		for i := 0; i < b.N; i++ {
+			log.Printf("C2: %d", i)
 			Temp(buffer, c)
-			close(chan2)
-		}()
-		//}
-		<-chan1
-		<-chan2
-	}
+		}
+		close(chan2)
+	}()
+	//}
+	<-chan1
+	<-chan2
 	buffer.Close()
 }
 

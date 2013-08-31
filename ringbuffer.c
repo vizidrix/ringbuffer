@@ -182,19 +182,19 @@ error:
 void temp(rb_buffer * buffer, uint64_t count) {
 	//rb_buffer * buffer;
 	//rb_init_buffer(&buffer, 1000, 1, 1024);
-	//int i = 0;
-	//for(i = 0; i < count; i++) {
-	//	char cancel = 0;
-		//rb_batch * batch = rb_claim(buffer, 1, &cancel);
-		//rb_publish(buffer, batch);
-		//rb_release(buffer, batch);
+	int i = 0;
+	for(i = 0; i < count; i++) {
+		char cancel = 0;
+		rb_batch * batch = rb_claim(buffer, 1, &cancel);
+		rb_publish(buffer, batch);
+		rb_release(buffer, batch);
 
 
 		//if(batch->batch_num != i) {
 		//	__errno(100);
 		//	return;
 		//}
-	//}
+	}
 	//rb_free_buffer(&buffer);
 	//return;
 }
@@ -241,12 +241,18 @@ rb_claim(rb_buffer * buffer, uint16_t count, void* cancel) {
 		goto error;
 	} // Must be > 0 and < buffer size
 	uint64_t index = buffer->stats.write_batch_num;
+	uint64_t iterations = 0;
 	// Scan forward trying to put your count in the slot first
 	//DebugPrint("%d >= (%d + %d)", index, buffer->stats.barrier_batch_num, buffer->info.batch_buffer_size);
 	while(__builtin_expect(index >= (buffer->stats.barrier_batch_num + buffer->info.batch_buffer_size), 0) ||
 		!__sync_bool_compare_and_swap(&buffer->batches[index++ & buffer->info.batch_size_mask].batch_size, 0, count)) {
 		sched_yield();
 		usleep(1);
+		if(iterations++>=1000) {
+			__errno(RB_ERROR);
+			return NULL;
+		}
+
 		if(__builtin_expect(cancel == NULL, 0)) { __errno(RB_CLAIM_CANCELED); goto error; }
 	}
 	// Increment the starting spot for the next claim
